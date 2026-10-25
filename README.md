@@ -4,9 +4,19 @@ Native Android companion application for the physical **Offload** rugby board ga
 
 ## Current version
 
-**v0.1.2 — Approved Visual Shell**
+**v0.1.3 — Scoreboard Controls**
 
-This patch implements the locked static Offload Companion match-screen design in native Jetpack Compose. Gameplay interactions remain intentionally deferred to later v0.1.x patches.
+This patch keeps the QA-approved v0.1.2 visual shell locked while adding Red/Blue Try and Conversion scoring, live MatchState-backed score displays and a score-correction dialog.
+
+## Score behaviour
+
+- Try = +5
+- Conversion = +2
+- Red and Blue scores are independent.
+- Tap a SCORE box to open correction controls.
+- Correction supports −1 / +1, CANCEL and DONE.
+- Scores clamp at zero.
+- Scoring does not change the active Coach.
 
 ## Stack
 
@@ -36,27 +46,21 @@ This patch implements the locked static Offload Companion match-screen design in
 - Poppins Light
 - Offload Colour Profile reference PDF
 
-## v0.1.2 visual shell
-
-The main screen now includes the approved branded header; Red and Blue Coach panels; static Try/Conversion controls and score displays; Red and Blue Offload Tracks with a central REST control; Red and Blue Turn Tracks with the central HALF control; and four bottom controls for Phases of Play, Actions, Dice Roller and Rules. Settings, Stats and Help remain visible but inactive.
-
 ## Development build
 
-With Android Studio, open the project and build the `app` debug variant.
-
-From a configured command-line Android development envelopment:
+From a configured Android environment:
 
 ```bash
-gradle :app:assembleDebug
+gradle :app:testDebugUnitTest :app:assembleDebug
 ```
 
-CI builds, installs and launches the APK in an Android emulator and captures landscape QA screenshots at 2400×1080, 2340×1080 and 1920×1080.
+CI runs score unit tests, installs and launches the APK in an Android emulator, exercises the scoreboard/correction interactions, and captures landscape QA screenshots at 2400×1080, 2340×1080 and 1920×1080.
 
 ## v0.1.x roadmap
 
 - v0.1.1 — Android Project Foundation — complete
-- v0.1.2 — Approved Visual Shell — current
-- v0.1.3 — Scoreboard Controls
+- v0.1.2 — Approved Visual Shell — complete
+- v0.1.3 — Scoreboard Controls — current
 - v0.1.4 — Offload Tracks & REST
 - v0.1.5 — Turns, Half & Active Coach
 - v0.1.6 — Undo, Persistence & Reset

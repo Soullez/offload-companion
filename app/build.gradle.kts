@@ -11,10 +11,10 @@ android {
         applicationId = "com.offload.companion"
         minSdk = 26
         targetSdk = 36
-        versionCode = 12
-        versionName = "0.1.2"
+        versionCode = 13
+        versionName = "0.1.3"
 
-        buildConfigField("String", "APP_VERSION", "\"v0.1.2\"")
+        buildConfigField("String", "APP_VERSION", "\"v0.1.3\"")
     }
 
     buildFeatures {
@@ -41,4 +41,5 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview:1.11.4")
 
     debugImplementation("androidx.compose.ui:ui-tooling:1.11.4")
+    testImplementation("junit:junit:4.13.2")
 }

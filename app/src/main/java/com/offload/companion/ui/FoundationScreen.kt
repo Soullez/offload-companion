@@ -2,6 +2,7 @@ package com.offload.companion.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,6 +23,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,12 +41,17 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.offload.companion.R
 import com.offload.companion.state.Coach
+import com.offload.companion.state.MatchState
+import com.offload.companion.state.ScoreboardLogic
 import com.offload.companion.ui.theme.BrandColors
 import com.offload.companion.ui.theme.OffloadFonts
 
@@ -61,6 +72,10 @@ private data class UiMetrics(val scale: Float) {
 
 @Composable
 fun FoundationScreen() {
+    var matchState by remember { mutableStateOf(MatchState()) }
+    var correctionCoach by remember { mutableStateOf<Coach?>(null) }
+    var correctionDraft by remember { mutableIntStateOf(0) }
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
@@ -93,6 +108,13 @@ fun FoundationScreen() {
                 CoachPanel(
                     coach = Coach.RED,
                     active = false,
+                    score = matchState.redScore,
+                    onTry = { matchState = ScoreboardLogic.addTry(matchState, Coach.RED) },
+                    onConversion = { matchState = ScoreboardLogic.addConversion(matchState, Coach.RED) },
+                    onScoreClick = {
+                        correctionDraft = matchState.redScore
+                        correctionCoach = Coach.RED
+                    },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
@@ -101,6 +123,13 @@ fun FoundationScreen() {
                 CoachPanel(
                     coach = Coach.BLUE,
                     active = false,
+                    score = matchState.blueScore,
+                    onTry = { matchState = ScoreboardLogic.addTry(matchState, Coach.BLUE) },
+                    onConversion = { matchState = ScoreboardLogic.addConversion(matchState, Coach.BLUE) },
+                    onScoreClick = {
+                        correctionDraft = matchState.blueScore
+                        correctionCoach = Coach.BLUE
+                    },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
@@ -201,6 +230,20 @@ fun FoundationScreen() {
                     metrics = metrics
                 )
             }
+        }
+
+        correctionCoach?.let { coach ->
+            ScoreCorrectionDialog(
+                coach = coach,
+                score = correctionDraft,
+                onMinus = { correctionDraft = ScoreboardLogic.adjustCorrection(correctionDraft, -1) },
+                onPlus = { correctionDraft = ScoreboardLogic.adjustCorrection(correctionDraft, 1) },
+                onDone = {
+                    matchState = ScoreboardLogic.correctScore(matchState, coach, correctionDraft)
+                    correctionCoach = null
+                },
+                onCancel = { correctionCoach = null }
+            )
         }
     }
 }
@@ -318,7 +361,16 @@ private fun DisabledHeaderIcon(label: String, metrics: UiMetrics) {
 }
 
 @Composable
-private fun CoachPanel(coach: Coach, active: Boolean, modifier: Modifier, metrics: UiMetrics) {
+private fun CoachPanel(
+    coach: Coach,
+    active: Boolean,
+    score: Int,
+    onTry: () -> Unit,
+    onConversion: () -> Unit,
+    onScoreClick: () -> Unit,
+    modifier: Modifier,
+    metrics: UiMetrics
+) {
     val accent = if (coach == Coach.RED) BrandColors.BloodySalmon else BrandColors.BrilliantBlue
     val dark = if (coach == Coach.RED) RedDark else BlueDark
     val mid = if (coach == Coach.RED) RedMid else BlueMid
@@ -373,6 +425,8 @@ private fun CoachPanel(coach: Coach, active: Boolean, modifier: Modifier, metric
                         label = "+ Try",
                         icon = ActionIcon.BALL,
                         accent = accent,
+                        contentDescription = if (coach == Coach.RED) "Red Try" else "Blue Try",
+                        onClick = onTry,
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                         metrics = metrics
                     )
@@ -380,12 +434,17 @@ private fun CoachPanel(coach: Coach, active: Boolean, modifier: Modifier, metric
                         label = "+ Conversion",
                         icon = ActionIcon.GOAL,
                         accent = accent,
+                        contentDescription = if (coach == Coach.RED) "Red Conversion" else "Blue Conversion",
+                        onClick = onConversion,
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                         metrics = metrics
                     )
                 }
                 ScoreDisplay(
+                    coach = coach,
+                    score = score,
                     accent = accent,
+                    onClick = onScoreClick,
                     modifier = Modifier.weight(0.78f).fillMaxHeight(),
                     metrics = metrics
                 )
@@ -420,13 +479,23 @@ private fun ActiveBadge(metrics: UiMetrics) {
 private enum class ActionIcon { BALL, GOAL }
 
 @Composable
-private fun ScoreActionButton(label: String, icon: ActionIcon, accent: Color, modifier: Modifier, metrics: UiMetrics) {
+private fun ScoreActionButton(
+    label: String,
+    icon: ActionIcon,
+    accent: Color,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    metrics: UiMetrics
+) {
     val shape = RoundedCornerShape(metrics.dp(7f))
     Row(
         modifier = modifier
             .clip(shape)
             .background(accent.copy(alpha = 0.18f))
             .border(metrics.dp(1f), accent.copy(alpha = 0.95f), shape)
+            .semantics { this.contentDescription = contentDescription }
+            .clickable(onClick = onClick)
             .padding(horizontal = metrics.dp(8f)),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -449,13 +518,24 @@ private fun ScoreActionButton(label: String, icon: ActionIcon, accent: Color, mo
 }
 
 @Composable
-private fun ScoreDisplay(accent: Color, modifier: Modifier, metrics: UiMetrics) {
+private fun ScoreDisplay(
+    coach: Coach,
+    score: Int,
+    accent: Color,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    metrics: UiMetrics
+) {
     val shape = RoundedCornerShape(metrics.dp(7f))
     Column(
         modifier = modifier
             .clip(shape)
             .background(Color.Black.copy(alpha = 0.28f))
             .border(metrics.dp(1.3f), accent, shape)
+            .semantics {
+                contentDescription = if (coach == Coach.RED) "Red Score $score" else "Blue Score $score"
+            }
+            .clickable(onClick = onClick)
             .padding(metrics.dp(4f)),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -470,13 +550,149 @@ private fun ScoreDisplay(accent: Color, modifier: Modifier, metrics: UiMetrics) 
             )
         )
         BasicText(
-            "0",
+            score.toString(),
             style = TextStyle(
                 color = BrandColors.Doctor,
                 fontFamily = OffloadFonts.ComicSerifPro,
                 fontSize = metrics.sp(42f),
                 lineHeight = metrics.sp(42f),
                 fontWeight = FontWeight.Bold
+            )
+        )
+    }
+}
+
+@Composable
+private fun ScoreCorrectionDialog(
+    coach: Coach,
+    score: Int,
+    onMinus: () -> Unit,
+    onPlus: () -> Unit,
+    onDone: () -> Unit,
+    onCancel: () -> Unit
+) {
+    val accent = if (coach == Coach.RED) BrandColors.BloodySalmon else BrandColors.BrilliantBlue
+    val coachLabel = if (coach == Coach.RED) "RED COACH" else "BLUE COACH"
+    val dialogDescription = if (coach == Coach.RED) "Score Correction Red Coach" else "Score Correction Blue Coach"
+
+    Dialog(onDismissRequest = onCancel) {
+        val shape = RoundedCornerShape(14.dp)
+        Column(
+            modifier = Modifier
+                .width(390.dp)
+                .clip(shape)
+                .background(Brush.verticalGradient(listOf(Color(0xFF0B4328), Color(0xFF061F16))))
+                .border(1.5.dp, BrandColors.PortOfGold, shape)
+                .semantics { contentDescription = dialogDescription }
+                .padding(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            BasicText(
+                text = "$coachLabel SCORE CORRECTION",
+                style = TextStyle(
+                    color = BrandColors.Doctor,
+                    fontFamily = OffloadFonts.ComicSerifPro,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 22.sp,
+                    textAlign = TextAlign.Center
+                )
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                CorrectionButton(
+                    label = "−1",
+                    contentDescription = "Score Correction Minus",
+                    accent = accent,
+                    onClick = onMinus,
+                    modifier = Modifier.weight(1f)
+                )
+
+                Box(
+                    modifier = Modifier
+                        .weight(1.15f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.Black.copy(alpha = 0.3f))
+                        .border(1.dp, accent, RoundedCornerShape(10.dp))
+                        .semantics { contentDescription = "Correction Score $score" }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    BasicText(
+                        score.toString(),
+                        style = TextStyle(
+                            color = BrandColors.Doctor,
+                            fontFamily = OffloadFonts.ComicSerifPro,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 36.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    )
+                }
+
+                CorrectionButton(
+                    label = "+1",
+                    contentDescription = "Score Correction Plus",
+                    accent = accent,
+                    onClick = onPlus,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CorrectionButton(
+                    label = "CANCEL",
+                    contentDescription = "Score Correction Cancel",
+                    accent = BrandColors.Trout,
+                    onClick = onCancel,
+                    modifier = Modifier.weight(1f)
+                )
+                CorrectionButton(
+                    label = "DONE",
+                    contentDescription = "Score Correction Done",
+                    accent = BrandColors.TealGreen,
+                    onClick = onDone,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CorrectionButton(
+    label: String,
+    contentDescription: String,
+    accent: Color,
+    onClick: () -> Unit,
+    modifier: Modifier
+) {
+    val shape = RoundedCornerShape(9.dp)
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(accent.copy(alpha = 0.36f))
+            .border(1.dp, BrandColors.PortOfGold, shape)
+            .semantics { this.contentDescription = contentDescription }
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp, horizontal = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        BasicText(
+            label,
+            style = TextStyle(
+                color = BrandColors.Doctor,
+                fontFamily = OffloadFonts.ComicSerifPro,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                textAlign = TextAlign.Center
             )
         )
     }

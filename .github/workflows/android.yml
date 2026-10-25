@@ -116,7 +116,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -q 'applicationId = "com.offload.companion"' app/build.gradle.kts
-          grep -q 'versionName = "0.1.2"' app/build.gradle.kts
+          grep -q 'versionName = "0.1.3"' app/build.gradle.kts
           grep -q 'android:screenOrientation="landscape"' app/src/main/AndroidManifest.xml
           grep -q 'FLAG_KEEP_SCREEN_ON' app/src/main/java/com/offload/companion/MainActivity.kt
           grep -q 'SYSTEM_UI_FLAG_IMMERSIVE_STICKY' app/src/main/java/com/offload/companion/MainActivity.kt
@@ -132,10 +132,16 @@ jobs:
           for target in '2+' '3+' '4+' '5+' '6+' 'START' 'OT'; do
             grep -q "$target" "$SCREEN"
           done
-          if grep -q 'clickable' "$SCREEN"; then
-            echo "::error::v0.1.2 shell controls must remain non-functional."
-            exit 1
-          fi
+          grep -q 'ScoreboardLogic.addTry' "$SCREEN"
+          grep -q 'ScoreboardLogic.addConversion' "$SCREEN"
+          grep -q 'Score Correction Minus' "$SCREEN"
+          grep -q 'Score Correction Plus' "$SCREEN"
+          grep -q 'Score Correction Done' "$SCREEN"
+          grep -q 'Score Correction Cancel' "$SCREEN"
+          grep -q 'object ScoreboardLogic' app/src/main/java/com/offload/companion/state/ScoreboardLogic.kt
+
+      - name: Unit score tests
+        run: gradle :app:testDebugUnitTest --stacktrace
 
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
@@ -148,7 +154,7 @@ jobs:
           test -s "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
           grep -q "package: name='com.offload.companion'" /tmp/badging.txt
-          grep -q "versionName='0.1.2'" /tmp/badging.txt
+          grep -q "versionName='0.1.3'" /tmp/badging.txt
 
       - name: Enable KVM
         shell: bash
@@ -171,16 +177,16 @@ jobs:
       - name: Prepare deliverables
         shell: bash
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk offload-companion-v0.1.2-debug.apk
-          sha256sum offload-companion-v0.1.2-debug.apk > offload-companion-v0.1.2-debug.apk.sha256
+          cp app/build/outputs/apk/debug/app-debug.apk offload-companion-v0.1.3-debug.apk
+          sha256sum offload-companion-v0.1.3-debug.apk > offload-companion-v0.1.3-debug.apk.sha256
 
       - name: Upload APK and QA evidence
         uses: actions/upload-artifact@v4
         with:
-          name: offload-companion-v0.1.2
+          name: offload-companion-v0.1.3
           path: |
-            offload-companion-v0.1.2-debug.apk
-            offload-companion-v0.1.2-debug.apk.sha256
+            offload-companion-v0.1.3-debug.apk
+            offload-companion-v0.1.3-debug.apk.sha256
             qa/*.png
           if-no-files-found: error
 
@@ -190,17 +196,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          cp offload-companion-v0.1.2-debug.apk artifacts/
-          cp offload-companion-v0.1.2-debug.apk.sha256 artifacts/
+          cp offload-companion-v0.1.3-debug.apk artifacts/
+          cp offload-companion-v0.1.3-debug.apk.sha256 artifacts/
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f artifacts/offload-companion-v0.1.2-debug.apk artifacts/offload-companion-v0.1.2-debug.apk.sha256
+          git add -f artifacts/offload-companion-v0.1.3-debug.apk artifacts/offload-companion-v0.1.3-debug.apk.sha256
 
           if git diff --cached --quiet; then
             echo "APK already current."
             exit 0
           fi
 
-          git commit -m "ci: publish APK for v0.1.2 [skip ci]"
+          git commit -m "ci: publish APK for v0.1.3 [skip ci]"
           git push

@@ -42,6 +42,8 @@ capture_size() {
 }
 
 mkdir -p qa
+# Suppress Android's one-time immersive-mode tutorial so QA screenshots capture the app itself.
+adb shell settings put secure immersive_mode_confirmations confirmed || true
 launch_app
 capture_size 2400x1080 landscape-2400x1080
 capture_size 2340x1080 landscape-2340x1080

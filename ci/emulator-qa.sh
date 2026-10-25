@@ -20,16 +20,18 @@ dump_ui() {
   adb exec-out cat /sdcard/offload-window.xml > /tmp/offload-window.xml
 }
 
-assert_desc() {
-  local desc="$1"
+assert_descs() {
   dump_ui
-  python3 - "$desc" <<'PY'
+  python3 - "$@" <<'PY'
 import sys, xml.etree.ElementTree as ET
-desc=sys.argv[1]
+wanted=sys.argv[1:]
 root=ET.parse("/tmp/offload-window.xml").getroot()
-if not any(n.attrib.get("content-desc")==desc for n in root.iter("node")):
-    raise SystemExit(f"Missing content-desc: {desc}")
-print(f"Found: {desc}")
+found={n.attrib.get("content-desc") for n in root.iter("node")}
+missing=[x for x in wanted if x not in found]
+if missing:
+    raise SystemExit("Missing content-desc: " + ", ".join(missing))
+for x in wanted:
+    print("Found:", x)
 PY
 }
 
@@ -55,7 +57,7 @@ PY
 )"
   read -r x y <<<"$xy"
   adb shell input tap "$x" "$y"
-  sleep 0.4
+  sleep 0.25
 }
 
 assert_landscape_png() {
@@ -90,85 +92,86 @@ adb shell settings put global hide_error_dialogs 1 || true
 adb shell wm size 2400x1080
 launch_app
 
-# Fresh Offload state.
-assert_desc "Red Offload 2+ selected"
-assert_desc "Blue Offload 2+ selected"
-assert_desc "Red Score 0"
-assert_desc "Blue Score 0"
+# Initial match state.
+assert_descs   "Red Turn START selected"   "Blue Turn START selected"   "Half H1 selected"   "Half H2 not selected"   "Red Coach Inactive"   "Blue Coach Inactive"   "Red Score 0"   "Blue Score 0"   "Red Offload 2+ selected"   "Blue Offload 2+ selected"
 
-# Red progression and upper clamp.
-tap_desc "Red Offload Plus"
-assert_desc "Red Offload 3+ selected"
-assert_desc "Blue Offload 2+ selected"
-tap_desc "Red Offload Plus"
-tap_desc "Red Offload Plus"
-tap_desc "Red Offload Plus"
-assert_desc "Red Offload 6+ selected"
-tap_desc "Red Offload Plus"
-assert_desc "Red Offload 6+ selected"
+# Consecutive Red turns are legal and do not advance Blue.
+tap_desc "Red Start Turn"
+assert_descs "Red Turn 1 selected" "Blue Turn START selected" "Red Coach Active" "Blue Coach Inactive"
+tap_desc "Red Start Turn"
+assert_descs "Red Turn 2 selected" "Blue Turn START selected" "Red Coach Active"
+tap_desc "Red Start Turn"
+assert_descs "Red Turn 3 selected" "Blue Turn START selected" "Red Coach Active"
 
-# Red decrement and lower clamp.
-tap_desc "Red Offload Minus"
-assert_desc "Red Offload 5+ selected"
-tap_desc "Red Offload Minus"
-tap_desc "Red Offload Minus"
-tap_desc "Red Offload Minus"
-assert_desc "Red Offload 2+ selected"
-tap_desc "Red Offload Minus"
-assert_desc "Red Offload 2+ selected"
+# Blue independently starts a turn.
+tap_desc "Blue Start Turn"
+assert_descs "Red Turn 3 selected" "Blue Turn 1 selected" "Blue Coach Active" "Red Coach Inactive"
 
-# Blue progression is independent.
-tap_desc "Blue Offload Plus"
-tap_desc "Blue Offload Plus"
-tap_desc "Blue Offload Plus"
-assert_desc "Blue Offload 5+ selected"
-assert_desc "Red Offload 2+ selected"
+# Switch back to Red.
+tap_desc "Red Start Turn"
+assert_descs "Red Turn 4 selected" "Blue Turn 1 selected" "Red Coach Active" "Blue Coach Inactive"
+adb exec-out screencap -p > qa/turn-active-state.png
+test -s qa/turn-active-state.png
+assert_landscape_png qa/turn-active-state.png
 
-# Put the tracks into differing states and capture visual highlighting.
-tap_desc "Red Offload Plus"
-tap_desc "Red Offload Plus"
-assert_desc "Red Offload 4+ selected"
-tap_desc "Blue Offload Plus"
-assert_desc "Blue Offload 6+ selected"
-adb exec-out screencap -p > qa/offload-active-state.png
-test -s qa/offload-active-state.png
-assert_landscape_png qa/offload-active-state.png
-
-# Score changes must not alter Offload values.
+# Establish score and Offload state, verifying Active Coach isolation.
 tap_desc "Red Try"
-assert_desc "Red Score 5"
-assert_desc "Blue Score 0"
-assert_desc "Red Offload 4+ selected"
-assert_desc "Blue Offload 6+ selected"
+tap_desc "Blue Conversion"
+tap_desc "Red Offload Plus"
+tap_desc "Red Offload Plus"
+tap_desc "Blue Offload Plus"
+tap_desc "Blue Offload Plus"
+tap_desc "Blue Offload Plus"
+assert_descs   "Red Score 5" "Blue Score 2"   "Red Offload 4+ selected" "Blue Offload 5+ selected"   "Red Turn 4 selected" "Blue Turn 1 selected"   "Red Coach Active" "Half H1 selected"
 
-# REST resets both tracks and does not alter score.
-tap_desc "REST Offload Tracks"
-assert_desc "Red Offload 2+ selected"
-assert_desc "Blue Offload 2+ selected"
-assert_desc "Red Score 5"
-assert_desc "Blue Score 0"
+# Drive Red to OT, then prove the OT clamp.
+tap_desc "Red Start Turn"
+assert_descs "Red Turn 5 selected"
+tap_desc "Red Start Turn"
+assert_descs "Red Turn 6 selected"
+tap_desc "Red Start Turn"
+assert_descs "Red Turn 7 selected"
+tap_desc "Red Start Turn"
+assert_descs "Red Turn OT selected"
+tap_desc "Red Start Turn"
+assert_descs   "Red Turn OT selected" "Blue Turn 1 selected"   "Red Coach Active"   "Red Score 5" "Blue Score 2"   "Red Offload 4+ selected" "Blue Offload 5+ selected"
 
-# Scoreboard regression after REST.
-tap_desc "Red Conversion"
+# H2 request can be cancelled with all match state preserved.
+tap_desc "Half H2 not selected"
+assert_descs "Start H2 Confirmation" "Start H2" "Cancel H2"
+adb exec-out screencap -p > qa/h2-confirmation-dialog.png
+test -s qa/h2-confirmation-dialog.png
+assert_landscape_png qa/h2-confirmation-dialog.png
+tap_desc "Cancel H2"
+assert_descs   "Half H1 selected" "Half H2 not selected"   "Red Turn OT selected" "Blue Turn 1 selected"   "Red Coach Active"   "Red Score 5" "Blue Score 2"   "Red Offload 4+ selected" "Blue Offload 5+ selected"
+
+# Confirm H2: only Turn tracks and Active Coach reset.
+tap_desc "Half H2 not selected"
+tap_desc "Start H2"
+assert_descs   "Half H2 selected" "Half H1 not selected"   "Red Turn START selected" "Blue Turn START selected"   "Red Coach Inactive" "Blue Coach Inactive"   "Red Score 5" "Blue Score 2"   "Red Offload 4+ selected" "Blue Offload 5+ selected"
+adb exec-out screencap -p > qa/h2-active-state.png
+test -s qa/h2-active-state.png
+assert_landscape_png qa/h2-active-state.png
+
+# Regression after half transition: scoring, correction, Offload and REST still work.
 tap_desc "Blue Try"
-assert_desc "Red Score 7"
-assert_desc "Blue Score 5"
-assert_desc "Red Offload 2+ selected"
-assert_desc "Blue Offload 2+ selected"
-
-# Correction dialog regression.
-tap_desc "Red Score 7"
-assert_desc "Score Correction Red Coach"
+assert_descs "Blue Score 7" "Half H2 selected" "Blue Turn START selected"
+tap_desc "Red Offload Plus"
+assert_descs "Red Offload 5+ selected" "Half H2 selected"
+tap_desc "Red Score 5"
+assert_descs "Score Correction Red Coach" "Correction Score 5"
 tap_desc "Score Correction Minus"
-assert_desc "Correction Score 6"
+assert_descs "Correction Score 4"
 tap_desc "Score Correction Cancel"
-assert_desc "Red Score 7"
+assert_descs "Red Score 5"
+tap_desc "REST Offload Tracks"
+assert_descs   "Red Offload 2+ selected" "Blue Offload 2+ selected"   "Half H2 selected"   "Red Turn START selected" "Blue Turn START selected"   "Red Coach Inactive" "Blue Coach Inactive"   "Red Score 5" "Blue Score 7"
 
-# Fresh process resets v0.1.4 state; capture clean layout QA at all required sizes.
+# Fresh process resets v0.1.5 state; capture clean layout QA.
 capture_size 2400x1080 landscape-2400x1080
 capture_size 2340x1080 landscape-2340x1080
 capture_size 1920x1080 landscape-1920x1080
 adb shell wm size reset
 launch_app
 
-echo "Emulator score and Offload QA passed."
+echo "Emulator score, Offload, Turn, Half and Active Coach QA passed."

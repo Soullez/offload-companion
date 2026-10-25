@@ -10,16 +10,16 @@ enum class MatchHalf {
     H2
 }
 
-enum class TurnMarker {
-    START,
-    ONE,
-    TWO,
-    THREE,
-    FOUR,
-    FIVE,
-    SIX,
-    SEVEN,
-    OT
+enum class TurnMarker(val label: String) {
+    START("START"),
+    ONE("1"),
+    TWO("2"),
+    THREE("3"),
+    FOUR("4"),
+    FIVE("5"),
+    SIX("6"),
+    SEVEN("7"),
+    OT("OT")
 }
 
 enum class OffloadTarget(val label: String) {

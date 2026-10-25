@@ -116,7 +116,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -q 'applicationId = "com.offload.companion"' app/build.gradle.kts
-          grep -q 'versionName = "0.1.4"' app/build.gradle.kts
+          grep -q 'versionName = "0.1.5"' app/build.gradle.kts
           grep -q 'android:screenOrientation="landscape"' app/src/main/AndroidManifest.xml
           grep -q 'FLAG_KEEP_SCREEN_ON' app/src/main/java/com/offload/companion/MainActivity.kt
           grep -q 'SYSTEM_UI_FLAG_IMMERSIVE_STICKY' app/src/main/java/com/offload/companion/MainActivity.kt
@@ -129,10 +129,11 @@ jobs:
           for text in             'THE RUGBY' 'RED COACH' 'BLUE COACH' '+ Try' '+ Conversion'             'SCORE' 'OFFLOAD TRACK' 'REST' 'TURN TRACK' 'START TURN'             'END TURN' 'HALF' 'H1' 'H2' 'PHASES OF PLAY' 'ACTIONS'             'DICE ROLLER' 'RULES'; do
             grep -q "$text" "$SCREEN"
           done
-          for target in 'START' 'OT'; do
-            grep -q "$target" "$SCREEN"
+          MATCH_STATE=app/src/main/java/com/offload/companion/state/MatchState.kt
+          for target in '"START"' '"1"' '"2"' '"3"' '"4"' '"5"' '"6"' '"7"' '"OT"'; do
+            grep -Fq "$target" "$MATCH_STATE"
           done
-          OFFLOAD_STATE=app/src/main/java/com/offload/companion/state/MatchState.kt
+          OFFLOAD_STATE="$MATCH_STATE"
           for target in '"2+"' '"3+"' '"4+"' '"5+"' '"6+"'; do
             grep -Fq "$target" "$OFFLOAD_STATE"
           done
@@ -150,8 +151,19 @@ jobs:
           grep -q 'Blue Offload Plus' "$SCREEN"
           grep -q 'REST Offload Tracks' "$SCREEN"
           grep -q 'object OffloadLogic' app/src/main/java/com/offload/companion/state/OffloadLogic.kt
+          grep -q 'TurnLogic.startTurn' "$SCREEN"
+          grep -q 'TurnLogic.startSecondHalf' "$SCREEN"
+          grep -q 'Red Start Turn' "$SCREEN"
+          grep -q 'Blue Start Turn' "$SCREEN"
+          grep -q 'Half H1 selected' "$SCREEN"
+          grep -q 'Half H2 selected' "$SCREEN"
+          grep -q 'Start H2' "$SCREEN"
+          grep -q 'Cancel H2' "$SCREEN"
+          grep -q 'Red Coach Active' "$SCREEN"
+          grep -q 'Blue Coach Active' "$SCREEN"
+          grep -q 'object TurnLogic' app/src/main/java/com/offload/companion/state/TurnLogic.kt
 
-      - name: Unit score and Offload tests
+      - name: Unit score, Offload and Turn/Half tests
         run: gradle :app:testDebugUnitTest --stacktrace
 
       - name: Build debug APK
@@ -165,7 +177,7 @@ jobs:
           test -s "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
           grep -q "package: name='com.offload.companion'" /tmp/badging.txt
-          grep -q "versionName='0.1.4'" /tmp/badging.txt
+          grep -q "versionName='0.1.5'" /tmp/badging.txt
 
       - name: Enable KVM
         shell: bash
@@ -188,16 +200,16 @@ jobs:
       - name: Prepare deliverables
         shell: bash
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk offload-companion-v0.1.4-debug.apk
-          sha256sum offload-companion-v0.1.4-debug.apk > offload-companion-v0.1.4-debug.apk.sha256
+          cp app/build/outputs/apk/debug/app-debug.apk offload-companion-v0.1.5-debug.apk
+          sha256sum offload-companion-v0.1.5-debug.apk > offload-companion-v0.1.5-debug.apk.sha256
 
       - name: Upload APK and QA evidence
         uses: actions/upload-artifact@v4
         with:
-          name: offload-companion-v0.1.4
+          name: offload-companion-v0.1.5
           path: |
-            offload-companion-v0.1.4-debug.apk
-            offload-companion-v0.1.4-debug.apk.sha256
+            offload-companion-v0.1.5-debug.apk
+            offload-companion-v0.1.5-debug.apk.sha256
             qa/*.png
           if-no-files-found: error
 
@@ -207,17 +219,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          cp offload-companion-v0.1.4-debug.apk artifacts/
-          cp offload-companion-v0.1.4-debug.apk.sha256 artifacts/
+          cp offload-companion-v0.1.5-debug.apk artifacts/
+          cp offload-companion-v0.1.5-debug.apk.sha256 artifacts/
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f artifacts/offload-companion-v0.1.4-debug.apk artifacts/offload-companion-v0.1.4-debug.apk.sha256
+          git add -f artifacts/offload-companion-v0.1.5-debug.apk artifacts/offload-companion-v0.1.5-debug.apk.sha256
 
           if git diff --cached --quiet; then
             echo "APK already current."
             exit 0
           fi
 
-          git commit -m "ci: publish APK for v0.1.4 [skip ci]"
+          git commit -m "ci: publish APK for v0.1.5 [skip ci]"
           git push

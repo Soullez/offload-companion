@@ -50,10 +50,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.offload.companion.R
 import com.offload.companion.state.Coach
+import com.offload.companion.state.MatchHalf
 import com.offload.companion.state.MatchState
 import com.offload.companion.state.OffloadLogic
 import com.offload.companion.state.OffloadTarget
 import com.offload.companion.state.ScoreboardLogic
+import com.offload.companion.state.TurnLogic
+import com.offload.companion.state.TurnMarker
 import com.offload.companion.ui.theme.BrandColors
 import com.offload.companion.ui.theme.OffloadFonts
 
@@ -77,6 +80,7 @@ fun FoundationScreen() {
     var matchState by remember { mutableStateOf(MatchState()) }
     var correctionCoach by remember { mutableStateOf<Coach?>(null) }
     var correctionDraft by remember { mutableIntStateOf(0) }
+    var showH2Confirmation by remember { mutableStateOf(false) }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -109,7 +113,7 @@ fun FoundationScreen() {
             ) {
                 CoachPanel(
                     coach = Coach.RED,
-                    active = false,
+                    active = matchState.activeCoach == Coach.RED,
                     score = matchState.redScore,
                     onTry = { matchState = ScoreboardLogic.addTry(matchState, Coach.RED) },
                     onConversion = { matchState = ScoreboardLogic.addConversion(matchState, Coach.RED) },
@@ -124,7 +128,7 @@ fun FoundationScreen() {
                 )
                 CoachPanel(
                     coach = Coach.BLUE,
-                    active = false,
+                    active = matchState.activeCoach == Coach.BLUE,
                     score = matchState.blueScore,
                     onTry = { matchState = ScoreboardLogic.addTry(matchState, Coach.BLUE) },
                     onConversion = { matchState = ScoreboardLogic.addConversion(matchState, Coach.BLUE) },
@@ -184,12 +188,18 @@ fun FoundationScreen() {
             ) {
                 TurnTrack(
                     coach = Coach.RED,
+                    selectedMarker = matchState.redTurn,
+                    onStartTurn = { matchState = TurnLogic.startTurn(matchState, Coach.RED) },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
                     metrics = metrics
                 )
                 HalfControl(
+                    currentHalf = matchState.half,
+                    onRequestH2 = {
+                        if (matchState.half == MatchHalf.H1) showH2Confirmation = true
+                    },
                     modifier = Modifier
                         .width(metrics.dp(78f))
                         .fillMaxHeight(),
@@ -197,6 +207,8 @@ fun FoundationScreen() {
                 )
                 TurnTrack(
                     coach = Coach.BLUE,
+                    selectedMarker = matchState.blueTurn,
+                    onStartTurn = { matchState = TurnLogic.startTurn(matchState, Coach.BLUE) },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
@@ -252,6 +264,16 @@ fun FoundationScreen() {
                     correctionCoach = null
                 },
                 onCancel = { correctionCoach = null }
+            )
+        }
+
+        if (showH2Confirmation) {
+            SecondHalfConfirmationDialog(
+                onConfirm = {
+                    matchState = TurnLogic.startSecondHalf(matchState)
+                    showH2Confirmation = false
+                },
+                onCancel = { showH2Confirmation = false }
             )
         }
     }
@@ -387,7 +409,14 @@ private fun CoachPanel(
     val title = if (coach == Coach.RED) "RED COACH" else "BLUE COACH"
 
     Panel(
-        modifier = modifier,
+        modifier = modifier.semantics {
+            contentDescription = when {
+                coach == Coach.RED && active -> "Red Coach Active"
+                coach == Coach.RED -> "Red Coach Inactive"
+                active -> "Blue Coach Active"
+                else -> "Blue Coach Inactive"
+            }
+        },
         borderColor = border,
         borderWidth = if (active) metrics.dp(2f) else metrics.dp(1.2f),
         background = Brush.horizontalGradient(listOf(mid, dark, PanelBlack)),
@@ -708,6 +737,67 @@ private fun CorrectionButton(
 }
 
 @Composable
+private fun SecondHalfConfirmationDialog(
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Dialog(onDismissRequest = onCancel) {
+        val shape = RoundedCornerShape(14.dp)
+        Column(
+            modifier = Modifier
+                .width(430.dp)
+                .clip(shape)
+                .background(Brush.verticalGradient(listOf(Color(0xFF0B4328), Color(0xFF061F16))))
+                .border(1.5.dp, BrandColors.PortOfGold, shape)
+                .semantics { contentDescription = "Start H2 Confirmation" }
+                .padding(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            BasicText(
+                text = "START SECOND HALF?",
+                style = TextStyle(
+                    color = BrandColors.Doctor,
+                    fontFamily = OffloadFonts.ComicSerifPro,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 22.sp,
+                    textAlign = TextAlign.Center
+                )
+            )
+            BasicText(
+                text = "Both Turn Tracks will reset to START. Scores and Offload Tracks will be preserved.",
+                style = TextStyle(
+                    color = BrandColors.Doctor.copy(alpha = 0.9f),
+                    fontFamily = OffloadFonts.PoppinsLight,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    textAlign = TextAlign.Center
+                )
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CorrectionButton(
+                    label = "CANCEL",
+                    contentDescription = "Cancel H2",
+                    accent = BrandColors.Trout,
+                    onClick = onCancel,
+                    modifier = Modifier.weight(1f)
+                )
+                CorrectionButton(
+                    label = "START H2",
+                    contentDescription = "Start H2",
+                    accent = BrandColors.TealGreen,
+                    onClick = onConfirm,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun OffloadTrack(
     coach: Coach,
     selectedTarget: OffloadTarget,
@@ -874,8 +964,15 @@ private fun RestControl(onClick: () -> Unit, modifier: Modifier, metrics: UiMetr
 }
 
 @Composable
-private fun TurnTrack(coach: Coach, modifier: Modifier, metrics: UiMetrics) {
+private fun TurnTrack(
+    coach: Coach,
+    selectedMarker: TurnMarker,
+    onStartTurn: () -> Unit,
+    modifier: Modifier,
+    metrics: UiMetrics
+) {
     val accent = if (coach == Coach.RED) BrandColors.BloodySalmon else BrandColors.BrilliantBlue
+    val coachLabel = if (coach == Coach.RED) "Red" else "Blue"
     Panel(
         modifier = modifier,
         borderColor = BrandColors.TealGreen.copy(alpha = 0.75f),
@@ -900,13 +997,23 @@ private fun TurnTrack(coach: Coach, modifier: Modifier, metrics: UiMetrics) {
                 )
             }
             Row(
-                modifier = Modifier.weight(0.2f).fillMaxWidth(),
+                modifier = Modifier
+                    .weight(0.2f)
+                    .fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                BasicText(
-                    "START TURN",
-                    style = TextStyle(color = BrandColors.Doctor.copy(alpha = 0.85f), fontFamily = OffloadFonts.PoppinsLight, fontSize = metrics.sp(7.5f))
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .semantics { contentDescription = "$coachLabel Start Turn" }
+                        .clickable(onClick = onStartTurn),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    BasicText(
+                        "START TURN",
+                        style = TextStyle(color = BrandColors.Doctor.copy(alpha = 0.85f), fontFamily = OffloadFonts.PoppinsLight, fontSize = metrics.sp(7.5f))
+                    )
+                }
                 Spacer(Modifier.weight(1f))
                 BasicText(
                     "END TURN",
@@ -917,12 +1024,13 @@ private fun TurnTrack(coach: Coach, modifier: Modifier, metrics: UiMetrics) {
                 modifier = Modifier.weight(0.48f).fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(metrics.dp(2.5f))
             ) {
-                listOf("START", "1", "2", "3", "4", "5", "6", "7", "OT").forEachIndexed { index, label ->
+                TurnMarker.entries.forEach { marker ->
                     TurnCell(
-                        label = label,
-                        selected = index == 0,
+                        coach = coach,
+                        label = marker.label,
+                        selected = marker == selectedMarker,
                         accent = accent,
-                        modifier = Modifier.weight(if (label == "START") 1.35f else 1f).fillMaxHeight(),
+                        modifier = Modifier.weight(if (marker == TurnMarker.START) 1.35f else 1f).fillMaxHeight(),
                         metrics = metrics
                     )
                 }
@@ -932,13 +1040,27 @@ private fun TurnTrack(coach: Coach, modifier: Modifier, metrics: UiMetrics) {
 }
 
 @Composable
-private fun TurnCell(label: String, selected: Boolean, accent: Color, modifier: Modifier, metrics: UiMetrics) {
+private fun TurnCell(
+    coach: Coach,
+    label: String,
+    selected: Boolean,
+    accent: Color,
+    modifier: Modifier,
+    metrics: UiMetrics
+) {
     val shape = RoundedCornerShape(metrics.dp(3.5f))
     Box(
         modifier = modifier
             .clip(shape)
             .background(if (selected) accent.copy(alpha = 0.82f) else Color(0xFF0A2A20))
-            .border(metrics.dp(0.8f), if (selected) BrandColors.Doctor else SoftGold.copy(alpha = 0.75f), shape),
+            .border(metrics.dp(0.8f), if (selected) BrandColors.Doctor else SoftGold.copy(alpha = 0.75f), shape)
+            .semantics {
+                contentDescription = buildString {
+                    append(if (coach == Coach.RED) "Red Turn " else "Blue Turn ")
+                    append(label)
+                    append(if (selected) " selected" else " not selected")
+                }
+            },
         contentAlignment = Alignment.Center
     ) {
         BasicText(
@@ -955,7 +1077,12 @@ private fun TurnCell(label: String, selected: Boolean, accent: Color, modifier: 
 }
 
 @Composable
-private fun HalfControl(modifier: Modifier, metrics: UiMetrics) {
+private fun HalfControl(
+    currentHalf: MatchHalf,
+    onRequestH2: () -> Unit,
+    modifier: Modifier,
+    metrics: UiMetrics
+) {
     Panel(
         modifier = modifier,
         borderColor = BrandColors.TealGreen.copy(alpha = 0.9f),
@@ -976,20 +1103,44 @@ private fun HalfControl(modifier: Modifier, metrics: UiMetrics) {
                     fontSize = metrics.sp(10f)
                 )
             )
-            HalfState("H1", selected = true, modifier = Modifier.weight(1f).fillMaxWidth(), metrics = metrics)
-            HalfState("H2", selected = false, modifier = Modifier.weight(1f).fillMaxWidth(), metrics = metrics)
+            HalfState(
+                label = "H1",
+                selected = currentHalf == MatchHalf.H1,
+                contentDescription = if (currentHalf == MatchHalf.H1) "Half H1 selected" else "Half H1 not selected",
+                onClick = null,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                metrics = metrics
+            )
+            HalfState(
+                label = "H2",
+                selected = currentHalf == MatchHalf.H2,
+                contentDescription = if (currentHalf == MatchHalf.H2) "Half H2 selected" else "Half H2 not selected",
+                onClick = if (currentHalf == MatchHalf.H1) onRequestH2 else null,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                metrics = metrics
+            )
         }
     }
 }
 
 @Composable
-private fun HalfState(label: String, selected: Boolean, modifier: Modifier, metrics: UiMetrics) {
+private fun HalfState(
+    label: String,
+    selected: Boolean,
+    contentDescription: String,
+    onClick: (() -> Unit)?,
+    modifier: Modifier,
+    metrics: UiMetrics
+) {
     val shape = RoundedCornerShape(metrics.dp(4f))
+    val interactionModifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
     Box(
         modifier = modifier
             .clip(shape)
             .background(if (selected) Color(0xFF5A4610) else Color(0xFF08251B))
-            .border(metrics.dp(1f), if (selected) BrandColors.PortOfGold else Color.White.copy(alpha = 0.18f), shape),
+            .border(metrics.dp(1f), if (selected) BrandColors.PortOfGold else Color.White.copy(alpha = 0.18f), shape)
+            .semantics { this.contentDescription = contentDescription }
+            .then(interactionModifier),
         contentAlignment = Alignment.Center
     ) {
         BasicText(

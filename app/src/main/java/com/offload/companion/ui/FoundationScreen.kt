@@ -51,6 +51,8 @@ import androidx.compose.ui.window.Dialog
 import com.offload.companion.R
 import com.offload.companion.state.Coach
 import com.offload.companion.state.MatchState
+import com.offload.companion.state.OffloadLogic
+import com.offload.companion.state.OffloadTarget
 import com.offload.companion.state.ScoreboardLogic
 import com.offload.companion.ui.theme.BrandColors
 import com.offload.companion.ui.theme.OffloadFonts
@@ -146,12 +148,16 @@ fun FoundationScreen() {
             ) {
                 OffloadTrack(
                     coach = Coach.RED,
+                    selectedTarget = matchState.redOffload,
+                    onMinus = { matchState = OffloadLogic.decrease(matchState, Coach.RED) },
+                    onPlus = { matchState = OffloadLogic.increase(matchState, Coach.RED) },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
                     metrics = metrics
                 )
                 RestControl(
+                    onClick = { matchState = OffloadLogic.rest(matchState) },
                     modifier = Modifier
                         .width(metrics.dp(62f))
                         .fillMaxHeight(),
@@ -159,6 +165,9 @@ fun FoundationScreen() {
                 )
                 OffloadTrack(
                     coach = Coach.BLUE,
+                    selectedTarget = matchState.blueOffload,
+                    onMinus = { matchState = OffloadLogic.decrease(matchState, Coach.BLUE) },
+                    onPlus = { matchState = OffloadLogic.increase(matchState, Coach.BLUE) },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
@@ -699,7 +708,14 @@ private fun CorrectionButton(
 }
 
 @Composable
-private fun OffloadTrack(coach: Coach, modifier: Modifier, metrics: UiMetrics) {
+private fun OffloadTrack(
+    coach: Coach,
+    selectedTarget: OffloadTarget,
+    onMinus: () -> Unit,
+    onPlus: () -> Unit,
+    modifier: Modifier,
+    metrics: UiMetrics
+) {
     val accent = if (coach == Coach.RED) BrandColors.BloodySalmon else BrandColors.BrilliantBlue
     Panel(
         modifier = modifier,
@@ -731,30 +747,51 @@ private fun OffloadTrack(coach: Coach, modifier: Modifier, metrics: UiMetrics) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(metrics.dp(5f))
             ) {
-                TrackSquare("−", modifier = Modifier.weight(0.72f).fillMaxHeight(), metrics = metrics)
-                listOf("2+", "3+", "4+", "5+", "6+").forEachIndexed { index, label ->
+                TrackSquare(
+                    label = "−",
+                    contentDescription = if (coach == Coach.RED) "Red Offload Minus" else "Blue Offload Minus",
+                    onClick = onMinus,
+                    modifier = Modifier.weight(0.72f).fillMaxHeight(),
+                    metrics = metrics
+                )
+                OffloadTarget.entries.forEach { target ->
                     OffloadMarker(
-                        label = label,
-                        selected = index == 0,
+                        coach = coach,
+                        label = target.label,
+                        selected = target == selectedTarget,
                         accent = accent,
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                         metrics = metrics
                     )
                 }
-                TrackSquare("+", modifier = Modifier.weight(0.72f).fillMaxHeight(), metrics = metrics)
+                TrackSquare(
+                    label = "+",
+                    contentDescription = if (coach == Coach.RED) "Red Offload Plus" else "Blue Offload Plus",
+                    onClick = onPlus,
+                    modifier = Modifier.weight(0.72f).fillMaxHeight(),
+                    metrics = metrics
+                )
             }
         }
     }
 }
 
 @Composable
-private fun TrackSquare(label: String, modifier: Modifier, metrics: UiMetrics) {
+private fun TrackSquare(
+    label: String,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    metrics: UiMetrics
+) {
     val shape = RoundedCornerShape(metrics.dp(7f))
     Box(
         modifier = modifier
             .clip(shape)
             .background(Color(0xFF0A3022))
-            .border(metrics.dp(1f), SoftGold, shape),
+            .border(metrics.dp(1f), SoftGold, shape)
+            .semantics { this.contentDescription = contentDescription }
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         BasicText(
@@ -771,7 +808,14 @@ private fun TrackSquare(label: String, modifier: Modifier, metrics: UiMetrics) {
 }
 
 @Composable
-private fun OffloadMarker(label: String, selected: Boolean, accent: Color, modifier: Modifier, metrics: UiMetrics) {
+private fun OffloadMarker(
+    coach: Coach,
+    label: String,
+    selected: Boolean,
+    accent: Color,
+    modifier: Modifier,
+    metrics: UiMetrics
+) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         val bg = if (selected) accent.copy(alpha = 0.92f) else Color(0xFF0B3024)
         Box(
@@ -780,7 +824,14 @@ private fun OffloadMarker(label: String, selected: Boolean, accent: Color, modif
                 .aspectRatio(1f)
                 .clip(CircleShape)
                 .background(bg)
-                .border(metrics.dp(1.2f), SoftGold, CircleShape),
+                .border(metrics.dp(1.2f), SoftGold, CircleShape)
+                .semantics {
+                    contentDescription = buildString {
+                        append(if (coach == Coach.RED) "Red Offload " else "Blue Offload ")
+                        append(label)
+                        append(if (selected) " selected" else " not selected")
+                    }
+                },
             contentAlignment = Alignment.Center
         ) {
             BasicText(
@@ -798,13 +849,15 @@ private fun OffloadMarker(label: String, selected: Boolean, accent: Color, modif
 }
 
 @Composable
-private fun RestControl(modifier: Modifier, metrics: UiMetrics) {
+private fun RestControl(onClick: () -> Unit, modifier: Modifier, metrics: UiMetrics) {
     val shape = RoundedCornerShape(metrics.dp(7f))
     Box(
         modifier = modifier
             .clip(shape)
             .background(Brush.verticalGradient(listOf(Color(0xFF143D28), Color(0xFF082A1D))))
-            .border(metrics.dp(1.2f), BrandColors.PortOfGold, shape),
+            .border(metrics.dp(1.2f), BrandColors.PortOfGold, shape)
+            .semantics { contentDescription = "REST Offload Tracks" }
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         BasicText(

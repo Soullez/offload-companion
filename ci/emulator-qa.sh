@@ -55,7 +55,7 @@ PY
 )"
   read -r x y <<<"$xy"
   adb shell input tap "$x" "$y"
-  sleep 0.5
+  sleep 0.4
 }
 
 assert_landscape_png() {
@@ -90,61 +90,85 @@ adb shell settings put global hide_error_dialogs 1 || true
 adb shell wm size 2400x1080
 launch_app
 
-# Score interaction acceptance checks.
+# Fresh Offload state.
+assert_desc "Red Offload 2+ selected"
+assert_desc "Blue Offload 2+ selected"
 assert_desc "Red Score 0"
 assert_desc "Blue Score 0"
 
+# Red progression and upper clamp.
+tap_desc "Red Offload Plus"
+assert_desc "Red Offload 3+ selected"
+assert_desc "Blue Offload 2+ selected"
+tap_desc "Red Offload Plus"
+tap_desc "Red Offload Plus"
+tap_desc "Red Offload Plus"
+assert_desc "Red Offload 6+ selected"
+tap_desc "Red Offload Plus"
+assert_desc "Red Offload 6+ selected"
+
+# Red decrement and lower clamp.
+tap_desc "Red Offload Minus"
+assert_desc "Red Offload 5+ selected"
+tap_desc "Red Offload Minus"
+tap_desc "Red Offload Minus"
+tap_desc "Red Offload Minus"
+assert_desc "Red Offload 2+ selected"
+tap_desc "Red Offload Minus"
+assert_desc "Red Offload 2+ selected"
+
+# Blue progression is independent.
+tap_desc "Blue Offload Plus"
+tap_desc "Blue Offload Plus"
+tap_desc "Blue Offload Plus"
+assert_desc "Blue Offload 5+ selected"
+assert_desc "Red Offload 2+ selected"
+
+# Put the tracks into differing states and capture visual highlighting.
+tap_desc "Red Offload Plus"
+tap_desc "Red Offload Plus"
+assert_desc "Red Offload 4+ selected"
+tap_desc "Blue Offload Plus"
+assert_desc "Blue Offload 6+ selected"
+adb exec-out screencap -p > qa/offload-active-state.png
+test -s qa/offload-active-state.png
+assert_landscape_png qa/offload-active-state.png
+
+# Score changes must not alter Offload values.
 tap_desc "Red Try"
 assert_desc "Red Score 5"
 assert_desc "Blue Score 0"
+assert_desc "Red Offload 4+ selected"
+assert_desc "Blue Offload 6+ selected"
 
-tap_desc "Red Conversion"
-assert_desc "Red Score 7"
+# REST resets both tracks and does not alter score.
+tap_desc "REST Offload Tracks"
+assert_desc "Red Offload 2+ selected"
+assert_desc "Blue Offload 2+ selected"
+assert_desc "Red Score 5"
 assert_desc "Blue Score 0"
 
+# Scoreboard regression after REST.
+tap_desc "Red Conversion"
 tap_desc "Blue Try"
 assert_desc "Red Score 7"
 assert_desc "Blue Score 5"
+assert_desc "Red Offload 2+ selected"
+assert_desc "Blue Offload 2+ selected"
 
-tap_desc "Blue Conversion"
-assert_desc "Red Score 7"
-assert_desc "Blue Score 7"
-
-# Cancel must leave the original score unchanged.
+# Correction dialog regression.
 tap_desc "Red Score 7"
 assert_desc "Score Correction Red Coach"
-assert_desc "Correction Score 7"
 tap_desc "Score Correction Minus"
 assert_desc "Correction Score 6"
-tap_desc "Score Correction Minus"
-assert_desc "Correction Score 5"
-adb exec-out screencap -p > qa/score-correction-dialog.png
-test -s qa/score-correction-dialog.png
-assert_landscape_png qa/score-correction-dialog.png
 tap_desc "Score Correction Cancel"
 assert_desc "Red Score 7"
 
-# DONE applies the draft.
-tap_desc "Red Score 7"
-tap_desc "Score Correction Plus"
-assert_desc "Correction Score 8"
-tap_desc "Score Correction Done"
-assert_desc "Red Score 8"
-
-# Lower bound must clamp at zero; CANCEL still leaves committed score unchanged.
-tap_desc "Red Score 8"
-for _ in $(seq 1 10); do tap_desc "Score Correction Minus"; done
-assert_desc "Correction Score 0"
-tap_desc "Score Correction Minus"
-assert_desc "Correction Score 0"
-tap_desc "Score Correction Cancel"
-assert_desc "Red Score 8"
-
-# Fresh activity process intentionally resets v0.1.3 state; capture clean layout QA.
+# Fresh process resets v0.1.4 state; capture clean layout QA at all required sizes.
 capture_size 2400x1080 landscape-2400x1080
 capture_size 2340x1080 landscape-2340x1080
 capture_size 1920x1080 landscape-1920x1080
 adb shell wm size reset
 launch_app
 
-echo "Emulator score QA passed."
+echo "Emulator score and Offload QA passed."

@@ -157,44 +157,7 @@ jobs:
           profile: pixel_6
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
-          script: |
-            set -euo pipefail
-            APK="app/build/outputs/apk/debug/app-debug.apk"
-
-            adb install -r "$APK"
-            adb shell am force-stop com.offload.companion
-            adb shell am start -W -n com.offload.companion/.MainActivity
-            sleep 3
-
-            adb shell pidof com.offload.companion
-            adb shell dumpsys activity activities | grep -q "com.offload.companion/.MainActivity"
-
-            ORIENTATION="$(adb shell dumpsys input | sed -n 's/.*SurfaceOrientation: //p' | head -n 1 | tr -d '\r')"
-            echo "SurfaceOrientation=$ORIENTATION"
-            if [ "$ORIENTATION" != "1" ] && [ "$ORIENTATION" != "3" ]; then
-              echo "::error::Activity did not present in landscape orientation."
-              exit 1
-            fi
-
-            mkdir -p qa
-            adb shell wm size 2400x1080
-            adb shell am force-stop com.offload.companion
-            adb shell am start -W -n com.offload.companion/.MainActivity
-            sleep 2
-            adb exec-out screencap -p > qa/landscape-2400x1080.png
-            test -s qa/landscape-2400x1080.png
-
-            adb shell wm size 2340x1080
-            adb shell am force-stop com.offload.companion
-            adb shell am start -W -n com.offload.companion/.MainActivity
-            sleep 2
-            adb exec-out screencap -p > qa/landscape-2340x1080.png
-            test -s qa/landscape-2340x1080.png
-
-            adb shell am force-stop com.offload.companion
-            adb shell am start -W -n com.offload.companion/.MainActivity
-            sleep 1
-            adb shell pidof com.offload.companion
+          script: bash ci/emulator-qa.sh
 
       - name: Prepare deliverables
         shell: bash

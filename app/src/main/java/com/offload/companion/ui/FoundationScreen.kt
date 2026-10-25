@@ -251,7 +251,7 @@ private fun AppHeader(modifier: Modifier, metrics: UiMetrics) {
             )
 
             BasicText(
-                text = "THE RUGBY\\nBOARD GAME",
+                text = "THE RUGBY\nBOARD GAME",
                 style = TextStyle(
                     color = BrandColors.Doctor,
                     fontFamily = OffloadFonts.PoppinsLight,

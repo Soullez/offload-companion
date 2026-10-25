@@ -1005,7 +1005,7 @@ private fun TurnTrack(
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
-                        .semantics { contentDescription = "$coachLabel Start Turn" }
+                        .semantics { contentDescription = if (coach == Coach.RED) "Red Start Turn" else "Blue Start Turn" }
                         .clickable(onClick = onStartTurn),
                     contentAlignment = Alignment.CenterStart
                 ) {

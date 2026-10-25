@@ -1,0 +1,27 @@
+{
+  "official_logo": {
+    "path": "app/src/main/res/drawable-nodpi/offload_logo.png",
+    "sha256": "4ec0feb66c29ad18bc2490634ab7f8c109b6cb81a552c147c4ef65e10d3ea327",
+    "bytes": 8480
+  },
+  "hvd_comic_serif_pro": {
+    "path": "app/src/main/res/font/hvd_comic_serif_pro.otf",
+    "sha256": "b15f185f6743d2ba99a378cb613216592b1e668f17ed769c1f3fa6066ef9a23f",
+    "bytes": 62576
+  },
+  "moderniz": {
+    "path": "app/src/main/res/font/moderniz.otf",
+    "sha256": "e044cd4698f7c4083e5b8b12536b85ca4b847650ca2e9fbeed505e67cac2079f",
+    "bytes": 11072
+  },
+  "poppins_light": {
+    "path": "app/src/main/res/font/poppins_light.ttf",
+    "sha256": "7f15d9a49bc6ca8b49ac995bbc36065b4bab0ed9f6d394a4c49d8f9ac85672c2",
+    "bytes": 146472
+  },
+  "colour_profile": {
+    "path": "app/src/main/assets/brand/colour_profile.pdf",
+    "sha256": "736dddb2978330451010278b2a88eba43497c3cd1af7ad010da4bcae41f4680a",
+    "bytes": 414777
+  }
+}

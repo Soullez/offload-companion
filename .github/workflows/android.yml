@@ -1,16 +1,73 @@
-name: Android Build
+name: Android Build & QA
 
 on:
   push:
+    paths-ignore:
+      - "artifacts/**"
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  build:
+  build-test-publish:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Reconstruct and verify supplied assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p app/src/main/res/font app/src/main/assets/brand
+
+          cat ci_payload/poppins_light.part*.bin > app/src/main/res/font/poppins_light.ttf
+          cat ci_payload/colour_profile.part*.bin > app/src/main/assets/brand/colour_profile.pdf
+
+          echo "7f15d9a49bc6ca8b49ac995bbc36065b4bab0ed9f6d394a4c49d8f9ac85672c2  app/src/main/res/font/poppins_light.ttf" | sha256sum -c -
+          echo "736dddb2978330451010278b2a88eba43497c3cd1af7ad010da4bcae41f4680a  app/src/main/assets/brand/colour_profile.pdf" | sha256sum -c -
+          echo "e044cd4698f7c4083e5b8b12536b85ca4b847650ca2e9fbeed505e67cac2079f  app/src/main/res/font/moderniz.otf" | sha256sum -c -
+          echo "4ec0feb66c29ad18bc2490634ab7f8c109b6cb81a552c147c4ef65e10d3ea327  app/src/main/res/drawable-nodpi/offload_logo.png" | sha256sum -c -
+
+          EXPECTED_HVD="b15f185f6743d2ba99a378cb613216592b1e668f17ed769c1f3fa6066ef9a23f"
+          rm -rf /tmp/hvd && mkdir -p /tmp/hvd
+
+          # HVD's published license allows use but not raw redistribution.
+          # Retrieve from public upstream at build time, and only accept the
+          # exact bytes supplied by the project owner.
+          if curl --fail --location --retry 3               "https://www.fontsquirrel.com/fonts/download/HVD-Comic-Serif-Pro"               --output /tmp/hvd/font.zip; then
+            unzip -jo /tmp/hvd/font.zip "*.otf" -d /tmp/hvd/unpacked || true
+          fi
+
+          MATCH=""
+          if [ -d /tmp/hvd/unpacked ]; then
+            while IFS= read -r -d '' candidate; do
+              if [ "$(sha256sum "$candidate" | awk '{print $1}')" = "$EXPECTED_HVD" ]; then
+                MATCH="$candidate"
+                break
+              fi
+            done < <(find /tmp/hvd/unpacked -type f -name "*.otf" -print0)
+          fi
+
+          if [ -z "$MATCH" ]; then
+            if curl --fail --location --retry 3                 "https://static.wfonts.com/data/2015/03/22/hvd-comic-serif-pro/HVD_Comic_Serif_Pro.otf"                 --output /tmp/hvd/direct.otf; then
+              if [ "$(sha256sum /tmp/hvd/direct.otf | awk '{print $1}')" = "$EXPECTED_HVD" ]; then
+                MATCH="/tmp/hvd/direct.otf"
+              fi
+            fi
+          fi
+
+          if [ -z "$MATCH" ]; then
+            echo "::error::No upstream HVD Comic Serif Pro file matched the supplied SHA-256."
+            exit 1
+          fi
+
+          cp "$MATCH" app/src/main/res/font/hvd_comic_serif_pro.otf
+          echo "$EXPECTED_HVD  app/src/main/res/font/hvd_comic_serif_pro.otf" | sha256sum -c -
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -22,22 +79,131 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install Android SDK packages
-        run: yes | sdkmanager --licenses >/dev/null && sdkmanager "platforms;android-37" "build-tools;36.0.0" "platform-tools"
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platforms;android-37" "build-tools;36.0.0" "platform-tools"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.6.1"
 
+      - name: Static acceptance checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.offload.companion"' app/build.gradle.kts
+          grep -q 'versionName = "0.1.1"' app/build.gradle.kts
+          grep -q 'android:screenOrientation="landscape"' app/src/main/AndroidManifest.xml
+          grep -q 'FLAG_KEEP_SCREEN_ON' app/src/main/java/com/offload/companion/MainActivity.kt
+          grep -q 'SYSTEM_UI_FLAG_IMMERSIVE_STICKY' app/src/main/java/com/offload/companion/MainActivity.kt
+          if grep -R -q 'android.permission.INTERNET' app/src/main; then
+            echo "::error::Internet permission must not be present."
+            exit 1
+          fi
+
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk offload-companion-v0.1.1-debug.apk
+      - name: Verify APK identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "package: name='com.offload.companion'" /tmp/badging.txt
+          grep -q "versionName='0.1.1'" /tmp/badging.txt
 
-      - name: Upload APK
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Emulator install, launch, landscape and multi-size QA
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            APK="app/build/outputs/apk/debug/app-debug.apk"
+
+            adb install -r "$APK"
+            adb shell am force-stop com.offload.companion
+            adb shell am start -W -n com.offload.companion/.MainActivity
+            sleep 3
+
+            adb shell pidof com.offload.companion
+            adb shell dumpsys activity activities | grep -q "com.offload.companion/.MainActivity"
+
+            ORIENTATION="$(adb shell dumpsys input | sed -n 's/.*SurfaceOrientation: //p' | head -n 1 | tr -d '\r')"
+            echo "SurfaceOrientation=$ORIENTATION"
+            if [ "$ORIENTATION" != "1" ] && [ "$ORIENTATION" != "3" ]; then
+              echo "::error::Activity did not present in landscape orientation."
+              exit 1
+            fi
+
+            mkdir -p qa
+            adb shell wm size 2400x1080
+            adb shell am force-stop com.offload.companion
+            adb shell am start -W -n com.offload.companion/.MainActivity
+            sleep 2
+            adb exec-out screencap -p > qa/landscape-2400x1080.png
+            test -s qa/landscape-2400x1080.png
+
+            adb shell wm size 2340x1080
+            adb shell am force-stop com.offload.companion
+            adb shell am start -W -n com.offload.companion/.MainActivity
+            sleep 2
+            adb exec-out screencap -p > qa/landscape-2340x1080.png
+            test -s qa/landscape-2340x1080.png
+
+            adb shell am force-stop com.offload.companion
+            adb shell am start -W -n com.offload.companion/.MainActivity
+            sleep 1
+            adb shell pidof com.offload.companion
+
+      - name: Prepare deliverables
+        shell: bash
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk offload-companion-v0.1.1-debug.apk
+          sha256sum offload-companion-v0.1.1-debug.apk > offload-companion-v0.1.1-debug.apk.sha256
+
+      - name: Upload APK and QA evidence
         uses: actions/upload-artifact@v4
         with:
-          name: offload-companion-v0.1.1-debug
-          path: offload-companion-v0.1.1-debug.apk
+          name: offload-companion-v0.1.1
+          path: |
+            offload-companion-v0.1.1-debug.apk
+            offload-companion-v0.1.1-debug.apk.sha256
+            qa/*.png
           if-no-files-found: error
+
+      - name: Publish verified APK to repository
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          cp offload-companion-v0.1.1-debug.apk artifacts/
+          cp offload-companion-v0.1.1-debug.apk.sha256 artifacts/
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f artifacts/offload-companion-v0.1.1-debug.apk artifacts/offload-companion-v0.1.1-debug.apk.sha256
+
+          if git diff --cached --quiet; then
+            echo "APK already current."
+            exit 0
+          fi
+
+          git commit -m "ci: publish APK for v0.1.1 [skip ci]"
+          git push

@@ -34,41 +34,63 @@ jobs:
           echo "4ec0feb66c29ad18bc2490634ab7f8c109b6cb81a552c147c4ef65e10d3ea327  app/src/main/res/drawable-nodpi/offload_logo.png" | sha256sum -c -
 
           EXPECTED_HVD="b15f185f6743d2ba99a378cb613216592b1e668f17ed769c1f3fa6066ef9a23f"
-          rm -rf /tmp/hvd && mkdir -p /tmp/hvd
+          rm -rf /tmp/hvd && mkdir -p /tmp/hvd/candidates
 
-          # HVD's published license allows use but not raw redistribution.
-          # Retrieve from public upstream at build time, and only accept the
-          # exact bytes supplied by the project owner.
-          if curl --fail --location --retry 3               "https://www.fontsquirrel.com/fonts/download/HVD-Comic-Serif-Pro"               --output /tmp/hvd/font.zip; then
-            unzip -jo /tmp/hvd/font.zip "*.otf" -d /tmp/hvd/unpacked || true
-          fi
+          # HVD's published license allows use but restricts raw redistribution.
+          # Retrieve public copies only at build time, and accept one only if
+          # it is byte-for-byte identical to the user's supplied font.
+          try_otf() {
+            local url="$1"
+            local name="$2"
+            local out="/tmp/hvd/candidates/$name"
+            if curl --fail --location --retry 2 --connect-timeout 20 "$url" --output "$out"; then
+              echo "candidate $name: $(stat -c%s "$out") bytes $(sha256sum "$out" | awk '{print $1}')"
+            else
+              rm -f "$out"
+            fi
+          }
 
-          MATCH=""
-          if [ -d /tmp/hvd/unpacked ]; then
-            while IFS= read -r -d '' candidate; do
-              if [ "$(sha256sum "$candidate" | awk '{print $1}')" = "$EXPECTED_HVD" ]; then
-                MATCH="$candidate"
-                break
-              fi
-            done < <(find /tmp/hvd/unpacked -type f -name "*.otf" -print0)
-          fi
-
-          if [ -z "$MATCH" ]; then
-            if curl --fail --location --retry 3                 "https://static.wfonts.com/data/2015/03/22/hvd-comic-serif-pro/HVD_Comic_Serif_Pro.otf"                 --output /tmp/hvd/direct.otf; then
-              if [ "$(sha256sum /tmp/hvd/direct.otf | awk '{print $1}')" = "$EXPECTED_HVD" ]; then
-                MATCH="/tmp/hvd/direct.otf"
+          try_zip() {
+            local url="$1"
+            local name="$2"
+            local zip="/tmp/hvd/$name.zip"
+            local dir="/tmp/hvd/$name"
+            if curl --fail --location --retry 2 --connect-timeout 20 "$url" --output "$zip"; then
+              mkdir -p "$dir"
+              unzip -jo "$zip" "*.otf" -d "$dir" || true
+              if [ -d "$dir" ]; then
+                while IFS= read -r -d '' candidate; do
+                  local base
+                  base="$(basename "$candidate")"
+                  cp "$candidate" "/tmp/hvd/candidates/${name}-${base}"
+                  echo "candidate ${name}-${base}: $(stat -c%s "$candidate") bytes $(sha256sum "$candidate" | awk '{print $1}')"
+                done < <(find "$dir" -type f -name "*.otf" -print0)
               fi
             fi
-          fi
+          }
+
+          try_zip "https://www.fontsquirrel.com/fonts/download/HVD-Comic-Serif-Pro" "fontsquirrel"
+          try_zip "https://dl.dafont.com/dl/?f=hvd_comic_serif" "dafont"
+          try_zip "https://www.ffonts.net/HVD-Comic-Serif-Pro.font.zip" "ffonts"
+          try_zip "https://www.1001fonts.com/download/hvd-comic-serif-pro.zip" "1001fonts"
+          try_otf "https://static.wfonts.com/data/2015/03/22/hvd-comic-serif-pro/HVD_Comic_Serif_Pro.otf" "wfonts.otf"
+          try_otf "https://st.1001fonts.net/download/font/hvd-comic-serif-pro.hvdcomicserifpro.otf" "1001fonts-direct.otf"
+
+          MATCH=""
+          while IFS= read -r -d '' candidate; do
+            if [ "$(sha256sum "$candidate" | awk '{print $1}')" = "$EXPECTED_HVD" ]; then
+              MATCH="$candidate"
+              break
+            fi
+          done < <(find /tmp/hvd/candidates -type f -print0)
 
           if [ -z "$MATCH" ]; then
-            echo "::error::No upstream HVD Comic Serif Pro file matched the supplied SHA-256."
+            echo "::error::No public upstream HVD Comic Serif Pro file matched the supplied SHA-256."
             exit 1
           fi
 
           cp "$MATCH" app/src/main/res/font/hvd_comic_serif_pro.otf
           echo "$EXPECTED_HVD  app/src/main/res/font/hvd_comic_serif_pro.otf" | sha256sum -c -
-
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:

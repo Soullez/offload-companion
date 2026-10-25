@@ -36,9 +36,6 @@ jobs:
           EXPECTED_HVD="b15f185f6743d2ba99a378cb613216592b1e668f17ed769c1f3fa6066ef9a23f"
           rm -rf /tmp/hvd && mkdir -p /tmp/hvd/candidates
 
-          # HVD's published license allows use but restricts raw redistribution.
-          # Retrieve public copies only at build time, and accept one only if
-          # it is byte-for-byte identical to the user's supplied font.
           try_otf() {
             local url="$1"
             local name="$2"
@@ -91,6 +88,7 @@ jobs:
 
           cp "$MATCH" app/src/main/res/font/hvd_comic_serif_pro.otf
           echo "$EXPECTED_HVD  app/src/main/res/font/hvd_comic_serif_pro.otf" | sha256sum -c -
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -101,7 +99,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "ANDROID_HOME=$ANDROID_HOME"
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           if [ ! -x "$SDKMANAGER" ]; then
             SDKMANAGER="$(command -v sdkmanager)"
@@ -119,12 +116,24 @@ jobs:
         run: |
           set -euo pipefail
           grep -q 'applicationId = "com.offload.companion"' app/build.gradle.kts
-          grep -q 'versionName = "0.1.1"' app/build.gradle.kts
+          grep -q 'versionName = "0.1.2"' app/build.gradle.kts
           grep -q 'android:screenOrientation="landscape"' app/src/main/AndroidManifest.xml
           grep -q 'FLAG_KEEP_SCREEN_ON' app/src/main/java/com/offload/companion/MainActivity.kt
           grep -q 'SYSTEM_UI_FLAG_IMMERSIVE_STICKY' app/src/main/java/com/offload/companion/MainActivity.kt
           if grep -R -q 'android.permission.INTERNET' app/src/main; then
             echo "::error::Internet permission must not be present."
+            exit 1
+          fi
+
+          SCREEN=app/src/main/java/com/offload/companion/ui/FoundationScreen.kt
+          for text in             'THE RUGBY' 'RED COACH' 'BLUE COACH' '+ Try' '+ Conversion'             'SCORE' 'OFFLOAD TRACK' 'REST' 'TURN TRACK' 'START TURN'             'END TURN' 'HALF' 'H1' 'H2' 'PHASES OF PLAY' 'ACTIONS'             'DICE ROLLER' 'RULES'; do
+            grep -q "$text" "$SCREEN"
+          done
+          for target in '2+' '3+' '4+' '5+' '6+' 'START' 'OT'; do
+            grep -q "$target" "$SCREEN"
+          done
+          if grep -q 'clickable' "$SCREEN"; then
+            echo "::error::v0.1.2 shell controls must remain non-functional."
             exit 1
           fi
 
@@ -139,7 +148,7 @@ jobs:
           test -s "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
           grep -q "package: name='com.offload.companion'" /tmp/badging.txt
-          grep -q "versionName='0.1.1'" /tmp/badging.txt
+          grep -q "versionName='0.1.2'" /tmp/badging.txt
 
       - name: Enable KVM
         shell: bash
@@ -162,16 +171,16 @@ jobs:
       - name: Prepare deliverables
         shell: bash
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk offload-companion-v0.1.1-debug.apk
-          sha256sum offload-companion-v0.1.1-debug.apk > offload-companion-v0.1.1-debug.apk.sha256
+          cp app/build/outputs/apk/debug/app-debug.apk offload-companion-v0.1.2-debug.apk
+          sha256sum offload-companion-v0.1.2-debug.apk > offload-companion-v0.1.2-debug.apk.sha256
 
       - name: Upload APK and QA evidence
         uses: actions/upload-artifact@v4
         with:
-          name: offload-companion-v0.1.1
+          name: offload-companion-v0.1.2
           path: |
-            offload-companion-v0.1.1-debug.apk
-            offload-companion-v0.1.1-debug.apk.sha256
+            offload-companion-v0.1.2-debug.apk
+            offload-companion-v0.1.2-debug.apk.sha256
             qa/*.png
           if-no-files-found: error
 
@@ -181,17 +190,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          cp offload-companion-v0.1.1-debug.apk artifacts/
-          cp offload-companion-v0.1.1-debug.apk.sha256 artifacts/
+          cp offload-companion-v0.1.2-debug.apk artifacts/
+          cp offload-companion-v0.1.2-debug.apk.sha256 artifacts/
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f artifacts/offload-companion-v0.1.1-debug.apk artifacts/offload-companion-v0.1.1-debug.apk.sha256
+          git add -f artifacts/offload-companion-v0.1.2-debug.apk artifacts/offload-companion-v0.1.2-debug.apk.sha256
 
           if git diff --cached --quiet; then
             echo "APK already current."
             exit 0
           fi
 
-          git commit -m "ci: publish APK for v0.1.1 [skip ci]"
+          git commit -m "ci: publish APK for v0.1.2 [skip ci]"
           git push

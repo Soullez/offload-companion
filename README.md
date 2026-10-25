@@ -4,9 +4,9 @@ Native Android companion application for the physical **Offload** rugby board ga
 
 ## Current version
 
-**v0.1.1 — Android Project Foundation**
+**v0.1.2 — Approved Visual Shell**
 
-This patch establishes the native Android/Kotlin/Jetpack Compose foundation. The approved scoreboard visual shell is intentionally deferred to v0.1.2.
+This patch implements the locked static Offload Companion match-screen design in native Jetpack Compose. Gameplay interactions remain intentionally deferred to later v0.1.x patches.
 
 ## Stack
 
@@ -15,9 +15,8 @@ This patch establishes the native Android/Kotlin/Jetpack Compose foundation. The
 - Android Gradle Plugin 9.4.1
 - Kotlin Compose Compiler plugin 2.4.10
 - Gradle 9.6.x compatible
-- Compose BOM 2026.09.00
 - AndroidX Activity Compose 1.13.0
-- compileSdk 37 / targetSdk 36
+- compileSdk 36 / targetSdk 36
 - minSdk 26
 - Java 17
 
@@ -37,28 +36,26 @@ This patch establishes the native Android/Kotlin/Jetpack Compose foundation. The
 - Poppins Light
 - Offload Colour Profile reference PDF
 
+## v0.1.2 visual shell
+
+The main screen now includes the approved branded header; Red and Blue Coach panels; static Try/Conversion controls and score displays; Red and Blue Offload Tracks with a central REST control; Red and Blue Turn Tracks with the central HALF control; and four bottom controls for Phases of Play, Actions, Dice Roller and Rules. Settings, Stats and Help remain visible but inactive.
+
 ## Development build
 
 With Android Studio, open the project and build the `app` debug variant.
 
-From a configured command-line Android development environment:
+From a configured command-line Android development envelopment:
 
 ```bash
 gradle :app:assembleDebug
 ```
 
-The expected debug APK path is:
-
-```text
-app/build/outputs/apk/debug/app-debug.apk
-```
-
-For CI, `.github/workflows/android.yml` installs Java/Android SDK/Gradle and builds the debug APK.
+CI builds, installs and launches the APK in an Android emulator and captures landscape QA screenshots at 2400×1080, 2340×1080 and 1920×1080.
 
 ## v0.1.x roadmap
 
-- v0.1.1 — Android Project Foundation
-- v0.1.2 — Approved Visual Shell
+- v0.1.1 — Android Project Foundation — complete
+- v0.1.2 — Approved Visual Shell — current
 - v0.1.3 — Scoreboard Controls
 - v0.1.4 — Offload Tracks & REST
 - v0.1.5 — Turns, Half & Active Coach

@@ -17,7 +17,7 @@ launch_app() {
 
 assert_landscape_png() {
   local png="$1"
-  python3 - "$png" <<'PY'
+  python3 - "$png" <<'PY2'
 import struct, sys
 p=sys.argv[1]
 with open(p,'rb') as f:
@@ -28,28 +28,24 @@ w,h=struct.unpack(">II", sig[16:24])
 print(f"{p}: {w}x{h}")
 if w <= h:
     raise SystemExit(f"{p}: expected landscape screenshot, got {w}x{h}")
-PY
+PY2
+}
+
+capture_size() {
+  local size="$1"
+  local name="$2"
+  adb shell wm size "$size"
+  launch_app
+  adb exec-out screencap -p > "qa/$name.png"
+  test -s "qa/$name.png"
+  assert_landscape_png "qa/$name.png"
 }
 
 mkdir -p qa
-
-# Initial install/launch and process/activity verification.
 launch_app
-
-# Validate two Galaxy-class landscape display sizes.
-adb shell wm size 2400x1080
-launch_app
-adb exec-out screencap -p > qa/landscape-2400x1080.png
-test -s qa/landscape-2400x1080.png
-assert_landscape_png qa/landscape-2400x1080.png
-
-adb shell wm size 2340x1080
-launch_app
-adb exec-out screencap -p > qa/landscape-2340x1080.png
-test -s qa/landscape-2340x1080.png
-assert_landscape_png qa/landscape-2340x1080.png
-
-# Restore emulator display and verify a final relaunch.
+capture_size 2400x1080 landscape-2400x1080
+capture_size 2340x1080 landscape-2340x1080
+capture_size 1920x1080 landscape-1920x1080
 adb shell wm size reset
 launch_app
 

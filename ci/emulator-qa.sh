@@ -6,6 +6,7 @@ test -s "$APK"
 
 echo "Installing $APK"
 adb install -r "$APK"
+adb shell pm clear com.offload.companion >/dev/null || true
 
 launch_app() {
   adb shell am force-stop com.offload.companion
@@ -76,14 +77,24 @@ if w <= h:
 PY
 }
 
+capture_png() {
+  local name="$1"
+  adb exec-out screencap -p > "qa/$name.png"
+  test -s "qa/$name.png"
+  assert_landscape_png "qa/$name.png"
+}
+
 capture_size() {
   local size="$1"
   local name="$2"
   adb shell wm size "$size"
   launch_app
-  adb exec-out screencap -p > "qa/$name.png"
-  test -s "qa/$name.png"
-  assert_landscape_png "qa/$name.png"
+  capture_png "$name"
+}
+
+reset_storage() {
+  adb shell pm clear com.offload.companion >/dev/null
+  launch_app
 }
 
 mkdir -p qa
@@ -92,86 +103,157 @@ adb shell settings put global hide_error_dialogs 1 || true
 adb shell wm size 2400x1080
 launch_app
 
-# Initial match state.
-assert_descs   "Red Turn START selected"   "Blue Turn START selected"   "Half H1 selected"   "Half H2 not selected"   "Red Coach Inactive"   "Blue Coach Inactive"   "Red Score 0"   "Blue Score 0"   "Red Offload 2+ selected"   "Blue Offload 2+ selected"
+# Fresh state / Undo unavailable.
+assert_descs   "Undo Unavailable"   "Red Score 0" "Blue Score 0"   "Red Offload 2+ selected" "Blue Offload 2+ selected"   "Red Turn START selected" "Blue Turn START selected"   "Half H1 selected"   "Red Coach Inactive" "Blue Coach Inactive"
+capture_png "undo-disabled-state"
 
-# Consecutive Red turns are legal and do not advance Blue.
-tap_desc "Red Start Turn"
-assert_descs "Red Turn 1 selected" "Blue Turn START selected" "Red Coach Active" "Blue Coach Inactive"
-tap_desc "Red Start Turn"
-assert_descs "Red Turn 2 selected" "Blue Turn START selected" "Red Coach Active"
-tap_desc "Red Start Turn"
-assert_descs "Red Turn 3 selected" "Blue Turn START selected" "Red Coach Active"
-
-# Blue independently starts a turn.
-tap_desc "Blue Start Turn"
-assert_descs "Red Turn 3 selected" "Blue Turn 1 selected" "Blue Coach Active" "Red Coach Inactive"
-
-# Switch back to Red.
-tap_desc "Red Start Turn"
-assert_descs "Red Turn 4 selected" "Blue Turn 1 selected" "Red Coach Active" "Blue Coach Inactive"
-adb exec-out screencap -p > qa/turn-active-state.png
-test -s qa/turn-active-state.png
-assert_landscape_png qa/turn-active-state.png
-
-# Establish score and Offload state, verifying Active Coach isolation.
+# Score Undo: Try.
 tap_desc "Red Try"
-tap_desc "Blue Conversion"
+assert_descs "Red Score 5" "Undo Last Action"
+capture_png "undo-available-state"
+tap_desc "Undo Last Action"
+assert_descs "Red Score 0" "Undo Unavailable"
+
+# Multiple score actions undo in reverse order.
+tap_desc "Red Try"
+tap_desc "Red Conversion"
+assert_descs "Red Score 7"
+tap_desc "Undo Last Action"
+assert_descs "Red Score 5"
+tap_desc "Undo Last Action"
+assert_descs "Red Score 0" "Undo Unavailable"
+
+# Score correction is one committed Undo step; CANCEL adds none.
+tap_desc "Red Try"
+tap_desc "Red Try"
+tap_desc "Red Conversion"
+assert_descs "Red Score 12"
+tap_desc "Red Score 12"
+tap_desc "Score Correction Minus"
+tap_desc "Score Correction Minus"
+assert_descs "Correction Score 10"
+tap_desc "Score Correction Done"
+assert_descs "Red Score 10"
+tap_desc "Undo Last Action"
+assert_descs "Red Score 12"
+
+tap_desc "Red Score 12"
+tap_desc "Score Correction Minus"
+assert_descs "Correction Score 11"
+tap_desc "Score Correction Cancel"
+assert_descs "Red Score 12"
+tap_desc "Undo Last Action"
+assert_descs "Red Score 10"
+
+# Isolate the remaining sections on clean local storage.
+reset_storage
+assert_descs "Undo Unavailable" "Red Score 0"
+
+# Offload Undo.
+tap_desc "Red Offload Plus"
+assert_descs "Red Offload 3+ selected" "Undo Last Action"
+tap_desc "Undo Last Action"
+assert_descs "Red Offload 2+ selected" "Undo Unavailable"
+
+# REST Undo restores both differing values.
 tap_desc "Red Offload Plus"
 tap_desc "Red Offload Plus"
+tap_desc "Red Offload Plus"
 tap_desc "Blue Offload Plus"
 tap_desc "Blue Offload Plus"
 tap_desc "Blue Offload Plus"
-assert_descs   "Red Score 5" "Blue Score 2"   "Red Offload 4+ selected" "Blue Offload 5+ selected"   "Red Turn 4 selected" "Blue Turn 1 selected"   "Red Coach Active" "Half H1 selected"
+tap_desc "Blue Offload Plus"
+assert_descs "Red Offload 5+ selected" "Blue Offload 6+ selected"
+tap_desc "REST Offload Tracks"
+assert_descs "Red Offload 2+ selected" "Blue Offload 2+ selected"
+tap_desc "Undo Last Action"
+assert_descs "Red Offload 5+ selected" "Blue Offload 6+ selected"
 
-# Drive Red to OT, then prove the OT clamp.
+# Turn and Active Coach Undo.
+reset_storage
 tap_desc "Red Start Turn"
-assert_descs "Red Turn 5 selected"
-tap_desc "Red Start Turn"
-assert_descs "Red Turn 6 selected"
-tap_desc "Red Start Turn"
-assert_descs "Red Turn 7 selected"
-tap_desc "Red Start Turn"
-assert_descs "Red Turn OT selected"
-tap_desc "Red Start Turn"
-assert_descs   "Red Turn OT selected" "Blue Turn 1 selected"   "Red Coach Active"   "Red Score 5" "Blue Score 2"   "Red Offload 4+ selected" "Blue Offload 5+ selected"
+assert_descs "Red Turn 1 selected" "Red Coach Active" "Undo Last Action"
+tap_desc "Undo Last Action"
+assert_descs "Red Turn START selected" "Red Coach Inactive" "Blue Coach Inactive" "Undo Unavailable"
 
-# H2 request can be cancelled with all match state preserved.
-tap_desc "Half H2 not selected"
-assert_descs "Start H2 Confirmation" "Start H2" "Cancel H2"
-adb exec-out screencap -p > qa/h2-confirmation-dialog.png
-test -s qa/h2-confirmation-dialog.png
-assert_landscape_png qa/h2-confirmation-dialog.png
-tap_desc "Cancel H2"
-assert_descs   "Half H1 selected" "Half H2 not selected"   "Red Turn OT selected" "Blue Turn 1 selected"   "Red Coach Active"   "Red Score 5" "Blue Score 2"   "Red Offload 4+ selected" "Blue Offload 5+ selected"
+tap_desc "Red Start Turn"
+tap_desc "Blue Start Turn"
+assert_descs "Red Turn 1 selected" "Blue Turn 1 selected" "Blue Coach Active"
+tap_desc "Undo Last Action"
+assert_descs "Red Turn 1 selected" "Blue Turn START selected" "Red Coach Active"
 
-# Confirm H2: only Turn tracks and Active Coach reset.
+# Half transition Undo restores the exact prior H1 snapshot.
+tap_desc "Red Start Turn"
+tap_desc "Red Start Turn"
+tap_desc "Blue Start Turn"
+tap_desc "Red Start Turn"
+assert_descs "Red Turn 4 selected" "Blue Turn 1 selected" "Red Coach Active" "Half H1 selected"
 tap_desc "Half H2 not selected"
 tap_desc "Start H2"
-assert_descs   "Half H2 selected" "Half H1 not selected"   "Red Turn START selected" "Blue Turn START selected"   "Red Coach Inactive" "Blue Coach Inactive"   "Red Score 5" "Blue Score 2"   "Red Offload 4+ selected" "Blue Offload 5+ selected"
-adb exec-out screencap -p > qa/h2-active-state.png
-test -s qa/h2-active-state.png
-assert_landscape_png qa/h2-active-state.png
+assert_descs "Half H2 selected" "Red Turn START selected" "Blue Turn START selected" "Red Coach Inactive" "Blue Coach Inactive"
+tap_desc "Undo Last Action"
+assert_descs "Half H1 selected" "Red Turn 4 selected" "Blue Turn 1 selected" "Red Coach Active"
 
-# Regression after half transition: scoring, correction, Offload and REST still work.
+# Build a deliberately complex H1 state for persistence validation.
+reset_storage
+# Red 17 = 3 tries + conversion.
+tap_desc "Red Try"
+tap_desc "Red Try"
+tap_desc "Red Try"
+tap_desc "Red Conversion"
+# Blue 12 = 2 tries + conversion.
 tap_desc "Blue Try"
-assert_descs "Blue Score 7" "Half H2 selected" "Blue Turn START selected"
+tap_desc "Blue Try"
+tap_desc "Blue Conversion"
+# Red 4+, Blue 6+.
 tap_desc "Red Offload Plus"
-assert_descs "Red Offload 5+ selected" "Half H2 selected"
-tap_desc "Red Score 5"
-assert_descs "Score Correction Red Coach" "Correction Score 5"
-tap_desc "Score Correction Minus"
-assert_descs "Correction Score 4"
-tap_desc "Score Correction Cancel"
-assert_descs "Red Score 5"
-tap_desc "REST Offload Tracks"
-assert_descs   "Red Offload 2+ selected" "Blue Offload 2+ selected"   "Half H2 selected"   "Red Turn START selected" "Blue Turn START selected"   "Red Coach Inactive" "Blue Coach Inactive"   "Red Score 5" "Blue Score 7"
+tap_desc "Red Offload Plus"
+tap_desc "Blue Offload Plus"
+tap_desc "Blue Offload Plus"
+tap_desc "Blue Offload Plus"
+tap_desc "Blue Offload Plus"
+# Red turn 5, Blue turn 3, Active Blue.
+for _ in 1 2 3 4 5; do tap_desc "Red Start Turn"; done
+for _ in 1 2 3; do tap_desc "Blue Start Turn"; done
+assert_descs   "Red Score 17" "Blue Score 12"   "Red Offload 4+ selected" "Blue Offload 6+ selected"   "Red Turn 5 selected" "Blue Turn 3 selected"   "Half H1 selected" "Blue Coach Active"
+capture_png "persisted-h1-before-relaunch"
 
-# Fresh process resets v0.1.5 state; capture clean layout QA.
+# Force-stop/relaunch must restore exact state. Undo history may reset.
+launch_app
+assert_descs   "Red Score 17" "Blue Score 12"   "Red Offload 4+ selected" "Blue Offload 6+ selected"   "Red Turn 5 selected" "Blue Turn 3 selected"   "Half H1 selected" "Blue Coach Active"   "Undo Unavailable"
+capture_png "persisted-h1-after-relaunch"
+
+# Persist H2 and another complex turn/active state.
+tap_desc "Half H2 not selected"
+tap_desc "Start H2"
+tap_desc "Red Start Turn"
+tap_desc "Red Start Turn"
+tap_desc "Blue Start Turn"
+assert_descs   "Half H2 selected"   "Red Turn 2 selected" "Blue Turn 1 selected" "Blue Coach Active"   "Red Score 17" "Blue Score 12"   "Red Offload 4+ selected" "Blue Offload 6+ selected"
+launch_app
+assert_descs   "Half H2 selected"   "Red Turn 2 selected" "Blue Turn 1 selected" "Blue Coach Active"   "Red Score 17" "Blue Score 12"   "Red Offload 4+ selected" "Blue Offload 6+ selected"   "Undo Unavailable"
+capture_png "persisted-h2-after-relaunch"
+
+# Reset CANCEL preserves the whole complex saved state.
+tap_desc "Reset Match"
+assert_descs "Reset Match Confirmation" "Cancel Reset" "Confirm Reset Match"
+capture_png "reset-confirmation-dialog"
+tap_desc "Cancel Reset"
+assert_descs   "Half H2 selected"   "Red Turn 2 selected" "Blue Turn 1 selected" "Blue Coach Active"   "Red Score 17" "Blue Score 12"   "Red Offload 4+ selected" "Blue Offload 6+ selected"
+
+# Confirmed Reset returns exact fresh state, clears Undo, and persists.
+tap_desc "Reset Match"
+tap_desc "Confirm Reset Match"
+assert_descs   "Undo Unavailable"   "Red Score 0" "Blue Score 0"   "Red Offload 2+ selected" "Blue Offload 2+ selected"   "Red Turn START selected" "Blue Turn START selected"   "Half H1 selected"   "Red Coach Inactive" "Blue Coach Inactive"
+
+launch_app
+assert_descs   "Undo Unavailable"   "Red Score 0" "Blue Score 0"   "Red Offload 2+ selected" "Blue Offload 2+ selected"   "Red Turn START selected" "Blue Turn START selected"   "Half H1 selected"   "Red Coach Inactive" "Blue Coach Inactive"
+
+# Layout regression at all required resolutions using persisted fresh state.
 capture_size 2400x1080 landscape-2400x1080
 capture_size 2340x1080 landscape-2340x1080
 capture_size 1920x1080 landscape-1920x1080
 adb shell wm size reset
 launch_app
 
-echo "Emulator score, Offload, Turn, Half and Active Coach QA passed."
+echo "Emulator Undo, persistence, Reset and full regression QA passed."

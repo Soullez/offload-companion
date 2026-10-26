@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -50,6 +51,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.offload.companion.R
 import com.offload.companion.state.Coach
+import com.offload.companion.data.SharedPreferencesMatchPersistence
+import com.offload.companion.state.MatchController
 import com.offload.companion.state.MatchHalf
 import com.offload.companion.state.MatchState
 import com.offload.companion.state.OffloadLogic
@@ -77,10 +80,16 @@ private data class UiMetrics(val scale: Float) {
 
 @Composable
 fun FoundationScreen() {
-    var matchState by remember { mutableStateOf(MatchState()) }
+    val context = LocalContext.current
+    val persistence = remember(context) { SharedPreferencesMatchPersistence(context) }
+    val controller = remember(persistence) {
+        MatchController(persistence.load() ?: MatchState(), persistence)
+    }
+    val matchState = controller.state
     var correctionCoach by remember { mutableStateOf<Coach?>(null) }
     var correctionDraft by remember { mutableIntStateOf(0) }
     var showH2Confirmation by remember { mutableStateOf(false) }
+    var showResetConfirmation by remember { mutableStateOf(false) }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -99,6 +108,9 @@ fun FoundationScreen() {
             verticalArrangement = Arrangement.spacedBy(gap)
         ) {
             AppHeader(
+                canUndo = controller.canUndo,
+                onUndo = { controller.undo() },
+                onReset = { showResetConfirmation = true },
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(0.12f),
@@ -115,8 +127,8 @@ fun FoundationScreen() {
                     coach = Coach.RED,
                     active = matchState.activeCoach == Coach.RED,
                     score = matchState.redScore,
-                    onTry = { matchState = ScoreboardLogic.addTry(matchState, Coach.RED) },
-                    onConversion = { matchState = ScoreboardLogic.addConversion(matchState, Coach.RED) },
+                    onTry = { controller.commit { ScoreboardLogic.addTry(it, Coach.RED) } },
+                    onConversion = { controller.commit { ScoreboardLogic.addConversion(it, Coach.RED) } },
                     onScoreClick = {
                         correctionDraft = matchState.redScore
                         correctionCoach = Coach.RED
@@ -130,8 +142,8 @@ fun FoundationScreen() {
                     coach = Coach.BLUE,
                     active = matchState.activeCoach == Coach.BLUE,
                     score = matchState.blueScore,
-                    onTry = { matchState = ScoreboardLogic.addTry(matchState, Coach.BLUE) },
-                    onConversion = { matchState = ScoreboardLogic.addConversion(matchState, Coach.BLUE) },
+                    onTry = { controller.commit { ScoreboardLogic.addTry(it, Coach.BLUE) } },
+                    onConversion = { controller.commit { ScoreboardLogic.addConversion(it, Coach.BLUE) } },
                     onScoreClick = {
                         correctionDraft = matchState.blueScore
                         correctionCoach = Coach.BLUE
@@ -153,15 +165,15 @@ fun FoundationScreen() {
                 OffloadTrack(
                     coach = Coach.RED,
                     selectedTarget = matchState.redOffload,
-                    onMinus = { matchState = OffloadLogic.decrease(matchState, Coach.RED) },
-                    onPlus = { matchState = OffloadLogic.increase(matchState, Coach.RED) },
+                    onMinus = { controller.commit { OffloadLogic.decrease(it, Coach.RED) } },
+                    onPlus = { controller.commit { OffloadLogic.increase(it, Coach.RED) } },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
                     metrics = metrics
                 )
                 RestControl(
-                    onClick = { matchState = OffloadLogic.rest(matchState) },
+                    onClick = { controller.commit { OffloadLogic.rest(it) } },
                     modifier = Modifier
                         .width(metrics.dp(62f))
                         .fillMaxHeight(),
@@ -170,8 +182,8 @@ fun FoundationScreen() {
                 OffloadTrack(
                     coach = Coach.BLUE,
                     selectedTarget = matchState.blueOffload,
-                    onMinus = { matchState = OffloadLogic.decrease(matchState, Coach.BLUE) },
-                    onPlus = { matchState = OffloadLogic.increase(matchState, Coach.BLUE) },
+                    onMinus = { controller.commit { OffloadLogic.decrease(it, Coach.BLUE) } },
+                    onPlus = { controller.commit { OffloadLogic.increase(it, Coach.BLUE) } },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
@@ -189,7 +201,7 @@ fun FoundationScreen() {
                 TurnTrack(
                     coach = Coach.RED,
                     selectedMarker = matchState.redTurn,
-                    onStartTurn = { matchState = TurnLogic.startTurn(matchState, Coach.RED) },
+                    onStartTurn = { controller.commit { TurnLogic.startTurn(it, Coach.RED) } },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
@@ -208,7 +220,7 @@ fun FoundationScreen() {
                 TurnTrack(
                     coach = Coach.BLUE,
                     selectedMarker = matchState.blueTurn,
-                    onStartTurn = { matchState = TurnLogic.startTurn(matchState, Coach.BLUE) },
+                    onStartTurn = { controller.commit { TurnLogic.startTurn(it, Coach.BLUE) } },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
@@ -260,7 +272,7 @@ fun FoundationScreen() {
                 onMinus = { correctionDraft = ScoreboardLogic.adjustCorrection(correctionDraft, -1) },
                 onPlus = { correctionDraft = ScoreboardLogic.adjustCorrection(correctionDraft, 1) },
                 onDone = {
-                    matchState = ScoreboardLogic.correctScore(matchState, coach, correctionDraft)
+                    controller.commit { ScoreboardLogic.correctScore(it, coach, correctionDraft) }
                     correctionCoach = null
                 },
                 onCancel = { correctionCoach = null }
@@ -270,10 +282,22 @@ fun FoundationScreen() {
         if (showH2Confirmation) {
             SecondHalfConfirmationDialog(
                 onConfirm = {
-                    matchState = TurnLogic.startSecondHalf(matchState)
+                    controller.commit { TurnLogic.startSecondHalf(it) }
                     showH2Confirmation = false
                 },
                 onCancel = { showH2Confirmation = false }
+            )
+        }
+
+        if (showResetConfirmation) {
+            ResetMatchConfirmationDialog(
+                onConfirm = {
+                    controller.reset()
+                    correctionCoach = null
+                    showH2Confirmation = false
+                    showResetConfirmation = false
+                },
+                onCancel = { showResetConfirmation = false }
             )
         }
     }
@@ -302,7 +326,13 @@ private fun FieldTexture() {
 }
 
 @Composable
-private fun AppHeader(modifier: Modifier, metrics: UiMetrics) {
+private fun AppHeader(
+    canUndo: Boolean,
+    onUndo: () -> Unit,
+    onReset: () -> Unit,
+    modifier: Modifier,
+    metrics: UiMetrics
+) {
     Panel(
         modifier = modifier,
         borderColor = BrandColors.TealGreen.copy(alpha = 0.75f),
@@ -336,6 +366,23 @@ private fun AppHeader(modifier: Modifier, metrics: UiMetrics) {
                 modifier = Modifier.padding(start = metrics.dp(10f))
             )
 
+            Spacer(modifier = Modifier.width(metrics.dp(14f)))
+            CompactHeaderControl(
+                label = "UNDO",
+                enabled = canUndo,
+                contentDescription = if (canUndo) "Undo Last Action" else "Undo Unavailable",
+                onClick = onUndo,
+                metrics = metrics
+            )
+            Spacer(modifier = Modifier.width(metrics.dp(5f)))
+            CompactHeaderControl(
+                label = "RESET",
+                enabled = true,
+                contentDescription = "Reset Match",
+                onClick = onReset,
+                metrics = metrics
+            )
+
             Spacer(modifier = Modifier.weight(1f))
             HeaderFieldArt(
                 modifier = Modifier
@@ -363,6 +410,43 @@ private fun HeaderFieldArt(modifier: Modifier) {
             color = BrandColors.Doctor.copy(alpha = 0.14f),
             topLeft = androidx.compose.ui.geometry.Offset(size.width * 0.75f, size.height * 0.18f),
             size = androidx.compose.ui.geometry.Size(size.width * 0.18f, size.height * 0.64f)
+        )
+    }
+}
+
+@Composable
+private fun CompactHeaderControl(
+    label: String,
+    enabled: Boolean,
+    contentDescription: String,
+    onClick: () -> Unit,
+    metrics: UiMetrics
+) {
+    val shape = RoundedCornerShape(metrics.dp(6f))
+    Box(
+        modifier = Modifier
+            .width(metrics.dp(58f))
+            .fillMaxHeight(0.72f)
+            .clip(shape)
+            .background(if (enabled) Color(0xFF0C4328) else Color(0xFF132A20))
+            .border(
+                metrics.dp(1f),
+                if (enabled) BrandColors.PortOfGold else BrandColors.Trout.copy(alpha = 0.7f),
+                shape
+            )
+            .semantics { this.contentDescription = contentDescription }
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        BasicText(
+            label,
+            style = TextStyle(
+                color = if (enabled) BrandColors.Doctor else BrandColors.Doctor.copy(alpha = 0.4f),
+                fontFamily = OffloadFonts.ComicSerifPro,
+                fontWeight = FontWeight.Bold,
+                fontSize = metrics.sp(9f),
+                textAlign = TextAlign.Center
+            )
         )
     }
 }
@@ -733,6 +817,67 @@ private fun CorrectionButton(
                 textAlign = TextAlign.Center
             )
         )
+    }
+}
+
+@Composable
+private fun ResetMatchConfirmationDialog(
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Dialog(onDismissRequest = onCancel) {
+        val shape = RoundedCornerShape(14.dp)
+        Column(
+            modifier = Modifier
+                .width(450.dp)
+                .clip(shape)
+                .background(Brush.verticalGradient(listOf(Color(0xFF0B4328), Color(0xFF061F16))))
+                .border(1.5.dp, BrandColors.PortOfGold, shape)
+                .semantics { contentDescription = "Reset Match Confirmation" }
+                .padding(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            BasicText(
+                text = "RESET MATCH?",
+                style = TextStyle(
+                    color = BrandColors.Doctor,
+                    fontFamily = OffloadFonts.ComicSerifPro,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 22.sp,
+                    textAlign = TextAlign.Center
+                )
+            )
+            BasicText(
+                text = "This will clear the current match and return all match values to their starting state.",
+                style = TextStyle(
+                    color = BrandColors.Doctor.copy(alpha = 0.9f),
+                    fontFamily = OffloadFonts.PoppinsLight,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    textAlign = TextAlign.Center
+                )
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CorrectionButton(
+                    label = "CANCEL",
+                    contentDescription = "Cancel Reset",
+                    accent = BrandColors.Trout,
+                    onClick = onCancel,
+                    modifier = Modifier.weight(1f)
+                )
+                CorrectionButton(
+                    label = "RESET MATCH",
+                    contentDescription = "Confirm Reset Match",
+                    accent = BrandColors.BloodySalmon,
+                    onClick = onConfirm,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
     }
 }
 

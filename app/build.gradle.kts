@@ -11,10 +11,10 @@ android {
         applicationId = "com.offload.companion"
         minSdk = 26
         targetSdk = 36
-        versionCode = 15
-        versionName = "0.1.5"
+        versionCode = 16
+        versionName = "0.1.6"
 
-        buildConfigField("String", "APP_VERSION", "\"v0.1.5\"")
+        buildConfigField("String", "APP_VERSION", "\"v0.1.6\"")
     }
 
     buildFeatures {

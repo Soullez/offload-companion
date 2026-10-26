@@ -116,7 +116,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -q 'applicationId = "com.offload.companion"' app/build.gradle.kts
-          grep -q 'versionName = "0.1.5"' app/build.gradle.kts
+          grep -q 'versionName = "0.1.6"' app/build.gradle.kts
           grep -q 'android:screenOrientation="landscape"' app/src/main/AndroidManifest.xml
           grep -q 'FLAG_KEEP_SCREEN_ON' app/src/main/java/com/offload/companion/MainActivity.kt
           grep -q 'SYSTEM_UI_FLAG_IMMERSIVE_STICKY' app/src/main/java/com/offload/companion/MainActivity.kt
@@ -162,8 +162,18 @@ jobs:
           grep -q 'Red Coach Active' "$SCREEN"
           grep -q 'Blue Coach Active' "$SCREEN"
           grep -q 'object TurnLogic' app/src/main/java/com/offload/companion/state/TurnLogic.kt
+          grep -q 'MatchController' "$SCREEN"
+          grep -q 'SharedPreferencesMatchPersistence' "$SCREEN"
+          grep -q 'Undo Last Action' "$SCREEN"
+          grep -q 'Undo Unavailable' "$SCREEN"
+          grep -q 'Reset Match' "$SCREEN"
+          grep -q 'Reset Match Confirmation' "$SCREEN"
+          grep -q 'Confirm Reset Match' "$SCREEN"
+          grep -q 'class MatchController' app/src/main/java/com/offload/companion/state/MatchController.kt
+          grep -q 'class SharedPreferencesMatchPersistence' app/src/main/java/com/offload/companion/data/MatchPersistence.kt
+          grep -q 'object MatchStateCodec' app/src/main/java/com/offload/companion/data/MatchPersistence.kt
 
-      - name: Unit score, Offload and Turn/Half tests
+      - name: Unit regression, Undo and persistence tests
         run: gradle :app:testDebugUnitTest --stacktrace
 
       - name: Build debug APK
@@ -177,7 +187,7 @@ jobs:
           test -s "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
           grep -q "package: name='com.offload.companion'" /tmp/badging.txt
-          grep -q "versionName='0.1.5'" /tmp/badging.txt
+          grep -q "versionName='0.1.6'" /tmp/badging.txt
 
       - name: Enable KVM
         shell: bash
@@ -200,16 +210,16 @@ jobs:
       - name: Prepare deliverables
         shell: bash
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk offload-companion-v0.1.5-debug.apk
-          sha256sum offload-companion-v0.1.5-debug.apk > offload-companion-v0.1.5-debug.apk.sha256
+          cp app/build/outputs/apk/debug/app-debug.apk offload-companion-v0.1.6-debug.apk
+          sha256sum offload-companion-v0.1.6-debug.apk > offload-companion-v0.1.6-debug.apk.sha256
 
       - name: Upload APK and QA evidence
         uses: actions/upload-artifact@v4
         with:
-          name: offload-companion-v0.1.5
+          name: offload-companion-v0.1.6
           path: |
-            offload-companion-v0.1.5-debug.apk
-            offload-companion-v0.1.5-debug.apk.sha256
+            offload-companion-v0.1.6-debug.apk
+            offload-companion-v0.1.6-debug.apk.sha256
             qa/*.png
           if-no-files-found: error
 
@@ -219,17 +229,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          cp offload-companion-v0.1.5-debug.apk artifacts/
-          cp offload-companion-v0.1.5-debug.apk.sha256 artifacts/
+          cp offload-companion-v0.1.6-debug.apk artifacts/
+          cp offload-companion-v0.1.6-debug.apk.sha256 artifacts/
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f artifacts/offload-companion-v0.1.5-debug.apk artifacts/offload-companion-v0.1.5-debug.apk.sha256
+          git add -f artifacts/offload-companion-v0.1.6-debug.apk artifacts/offload-companion-v0.1.6-debug.apk.sha256
 
           if git diff --cached --quiet; then
             echo "APK already current."
             exit 0
           fi
 
-          git commit -m "ci: publish APK for v0.1.5 [skip ci]"
+          git commit -m "ci: publish APK for v0.1.6 [skip ci]"
           git push
